@@ -60,12 +60,12 @@ const menuItems = [
     label: 'Rules & Policies',
     description: "View and manage your organization's rules and policies",
   },
-  {
-    key: 'data-migration',
-    icon: <BsCloudUpload size={18} />,
-    label: 'Data Migration',
-    description: 'Migrate JSON data (Vivah/Mamera/Suraksha) to program',
-  },
+  // {
+  //   key: 'data-migration',
+  //   icon: <BsCloudUpload size={18} />,
+  //   label: 'Data Migration',
+  //   description: 'Migrate JSON data (Vivah/Mamera/Suraksha) to program',
+  // },
 ];
 
 const SettingsPage = () => {
