@@ -189,7 +189,7 @@ const SideBar = ({ collapsed, onClose }) => {
           </div>
           {!collapsed && (
             <div>
-              <h2 className="font-bold text-white text-base leading-tight tracking-tight">Trust Manager</h2>
+              <h2 className="font-bold text-white text-base leading-tight tracking-tight">MHSSS ADMIN</h2>
               <p className="text-xs text-slate-500 mt-0.5">Admin Panel</p>
             </div>
           )}
