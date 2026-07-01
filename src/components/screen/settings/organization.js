@@ -6,29 +6,12 @@ import { useAuth } from '@/lib/AuthProvider';
 import { db, storage } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { TrsutData } from '@/lib/constentData';
 
 const { TextArea } = Input;
 
 // ─── Default Trust Data ───────────────────────────────────────────────────────
-export const TrustData = {
-    name: "श्री वासुदेव जनसेवा एजुकेशन एंड चैरिटेबल ट्रस्ट",
-    cityState: "गुजरात-राजस्थान",
-    address: "श्री कुलदेवी स्टील फर्नीचर शोरूम शॉपिंग में, मार्केटयार्ड के सामने, लाखणी-थराद हाईवे, लाखणी, तह. लाखणी, बनासकांठा (वाव-थराद)",
-    contact: "9979627618 / 9724133283 / 9924663176",
-    contactPerson: "उत्तमसिंह डी. राजपूत",
-    trustPresident: "उत्तमसिंह डी. राजपूत",
-    email: "",
-    website: "",
-    regNo: "Guj/7039/BK",
-    govtRegNo: "",
-    about: "",
-    logo: "/Images/logovjse.jpeg",
-    RightLogo: null,
-    headerImg: "/Images/headerImg.png",
-    banner: null,
-    trustStamp: null,
-    topTitle: ["॥ श्री गणेशाय नमः ॥", "|| जय माताजी ||"],
-};
+export const TrustData =TrsutData
 
 // ─── Upload helper with progress ─────────────────────────────────────────────
 const uploadToStorage = (
