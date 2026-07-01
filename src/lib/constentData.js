@@ -1,10 +1,11 @@
 import certificateImg from "@/app/api/helperfile/Images/CertificateImg";
+import headerImg from "@/app/api/helperfile/Images/headerImg";
 import logo from "@/app/api/helperfile/Images/logo";
 import semkariLogo from "@/app/api/helperfile/Images/semkariLogo";
 
 export const TrsutData={
     name:"मित्रा हिंदू समाज सेवा संस्थान",
-    cityState:"सुरत-गुजरात",
+    cityState:"राजस्थान-गुजरात",
     address:"पता:- प्रताप चौक, रबारियों का टांका, बलोतरा – 344022 (राज.)",
     contact:"कार्यालय नं. – 9166945821 (धनराज सोलंकी)",
     contactPerson:"धनराज सोलंकी",
@@ -15,7 +16,7 @@ export const TrsutData={
     regNo:null,
     logo:logo,
     RightLogo:null,
-    headerImg:"/Images/headerImg.png",
+    headerImg:headerImg,
     topTitle:[
         "॥ ॐ जय श्री गणेशाय नमः ॥",
     ]
