@@ -499,7 +499,7 @@ const LoginPage = () => {
 
             {/* Card footer */}
             <div style={{ padding: '1rem 2rem 1.5rem', borderTop: '1px solid rgba(84,63,39,0.1)', textAlign: 'center', fontSize: 11, color: '#6b5a3e', lineHeight: 1.6 }}>
-              <strong style={{ color: '#543f27' }}>Secure Portal</strong> — श्री वासुदेव जनसेवा ट्रस्ट
+              <strong style={{ color: '#543f27' }}>Secure Portal</strong> — {TrsutData.name}
               <br />All data protected &amp; encrypted
             </div>
           </div>
