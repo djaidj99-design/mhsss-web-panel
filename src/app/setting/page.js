@@ -8,6 +8,7 @@ import Sessions from '@/components/screen/settings/Sessions';
 import PasswordChange from '@/components/screen/settings/PasswordChange';
 import RulePolicy from '@/components/screen/settings/rulePolicy';
 import DataMigration from '@/components/screen/settings/DataMigration';
+import ExcelDataMigration from '@/components/screen/settings/ExcelDataMigration';
 import {
   BsBank2,
   BsShieldLock,
@@ -66,6 +67,12 @@ const menuItems = [
   //   label: 'Data Migration',
   //   description: 'Migrate JSON data (Vivah/Mamera/Suraksha) to program',
   // },
+  {
+    key: 'excel-data-migration',
+    icon: <BsCloudUpload size={18} />,
+    label: 'Excel Data Migration',
+    description: 'Migrate Mayra/Vivah from Excel JSON',
+  },
 ];
 
 const SettingsPage = () => {
@@ -136,6 +143,8 @@ const SettingsPage = () => {
         return <RulePolicy />;
       case 'data-migration':
         return <DataMigration />;
+      case 'excel-data-migration':
+        return <ExcelDataMigration />;
       case 'teams':
         return <TeamMembers />;
       case 'security':
