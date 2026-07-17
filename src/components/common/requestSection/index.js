@@ -229,23 +229,23 @@ const showAcceptModal = (member) => {
         currentMember.addedBy === 'agent' ? currentMember.agentId : null
       );
       
-      try {
-        await createMemberAccount({
-          memberId: result.id,
-          displayName: currentMember.displayName,
-          photoURL: currentMember.photoURL || "",
-          password: generateMemberPassword(currentMember.displayName, currentMember.bobDate) || "Member@123",
-          programId: currentMember.programId,
-          registrationNumber: result.registrationNumber,
-          memberCollectionPath: memberCollectionPath,
-          createdBy: user.uid
-        });
+      // try {
+      //   await createMemberAccount({
+      //     memberId: result.id,
+      //     displayName: currentMember.displayName,
+      //     photoURL: currentMember.photoURL || "",
+      //     password: generateMemberPassword(currentMember.displayName, currentMember.bobDate) || "Member@123",
+      //     programId: currentMember.programId,
+      //     registrationNumber: result.registrationNumber,
+      //     memberCollectionPath: memberCollectionPath,
+      //     createdBy: user.uid
+      //   });
       
-        console.log("Member auth created");
-      } catch (authError) {
-        console.error("Auth creation failed:", authError);
-        message.warning("Member added successfully, but login account creation failed.");
-      }
+      //   console.log("Member auth created");
+      // } catch (authError) {
+      //   console.error("Auth creation failed:", authError);
+      //   message.warning("Member added successfully, but login account creation failed.");
+      // }
       
       dispatch(setgetMemberDataChange(true));
       

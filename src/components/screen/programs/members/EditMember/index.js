@@ -121,12 +121,17 @@ useEffect(() => {
       }
     }
 
-    // Find location group
-    if (program && memberData.locationGroup) {
+    // Find location group (compute id directly for form init)
+    let foundLocationGroupId = undefined;
+    if (program) {
+      const norm = (s) => s?.trim().toLowerCase() || "";
       const locGroup = program.locationGroups?.find(g => 
-        g.location === memberData.locationGroup || g.groupName === memberData.memberGroup
+        g.id === memberData.locactionGroupId ||
+        norm(g.location) === norm(memberData.locationGroup) ||
+        norm(g.groupName) === norm(memberData.memberGroup)
       );
-      setSelectedLocationGroup(locGroup);
+      setSelectedLocationGroup(locGroup || null);
+      foundLocationGroupId = locGroup?.id;
     }
 
     // Set extra fields
@@ -234,7 +239,7 @@ useEffect(() => {
       program: memberData.programId,
       ageGroup: memberData.ageGroup,
       closingMonths: memberData.closingMonths || 0,
-      locationGroup: selectedLocationGroup?.id || undefined,
+      locationGroup: foundLocationGroupId,
       addedBy: memberData.addedBy || 'admin',
       selectedAgent: memberData.agentId || undefined,
       joinFeesDone: joinFeesDoneStatus,
@@ -252,7 +257,7 @@ useEffect(() => {
 
     form.setFieldsValue(formValues);
   }
-}, [open, memberData, programList, form, selectedLocationGroup]);
+  }, [open, memberData, programList, form]);
   // Reset form when drawer closes
   useEffect(() => {
     if (!open) {
@@ -814,7 +819,6 @@ console.log(values,'values')
                       const group = selectedProgram?.locationGroups?.find(g => g.id === value);
                       setSelectedLocationGroup(group);
                     }}
-                    value={selectedLocationGroup?.id}
                   >
                     {selectedProgram?.locationGroups?.map(group => (
                       <Option key={group.id} value={group.id}>
