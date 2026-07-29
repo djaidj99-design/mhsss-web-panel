@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  UserOutlined, MailOutlined, PhoneOutlined, LockOutlined, 
-  UploadOutlined, EditOutlined, UserAddOutlined, CloseOutlined ,FilePdfOutlined
+import {
+  UserOutlined, MailOutlined, PhoneOutlined, LockOutlined,
+  UploadOutlined, EditOutlined, UserAddOutlined, CloseOutlined, FilePdfOutlined
 } from '@ant-design/icons';
-import { Button, DatePicker, Drawer, Form, Input, Select, Spin, Upload, message as antMessage, Card, Divider } from 'antd';
+import { Button, DatePicker, Drawer, Form, Input, Select, Spin, Upload, App, Card, Divider } from 'antd';
 import { auth, db, storage } from '@/lib/firebase';
 import { setDoc, doc, collection, getDoc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -22,6 +22,7 @@ const indianStates = [
 
 const AgentManagement = ({ agentData = null, mode = 'add', onSuccess,isAgentDrawerVisible ,setIsAgentDrawerVisible}) => {
   const [form] = Form.useForm();
+  const [emailForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [autoPassword, setAutoPassword] = useState('');
   const [isAutoPassword, setIsAutoPassword] = useState(true);
@@ -29,6 +30,10 @@ const AgentManagement = ({ agentData = null, mode = 'add', onSuccess,isAgentDraw
   const [documentList, setDocumentList] = useState([]);
   const [signatureFileList, setSignatureFileList] = useState([]);
   const [initialLoading, setInitialLoading] = useState(false);
+  const [showEmailChange, setShowEmailChange] = useState(false);
+  const [emailChangeLoading, setEmailChangeLoading] = useState(false);
+
+  const { message: antMessage } = App.useApp();
 
   const isEditMode = mode === 'edit' && agentData;
 
@@ -122,10 +127,62 @@ const AgentManagement = ({ agentData = null, mode = 'add', onSuccess,isAgentDraw
   const closeAgentDrawer = () => {
     setIsAgentDrawerVisible(false);
     form.resetFields();
+    emailForm.resetFields();
     setFileList([]);
     setDocumentList([]);
     setSignatureFileList([]);
     setIsAutoPassword(true);
+    setShowEmailChange(false);
+  };
+
+  const handleEmailChange = async () => {
+    try {
+      await emailForm.validateFields();
+      const { newEmail } = emailForm.getFieldsValue();
+
+      if (newEmail === agentData.email) {
+        antMessage.warning('New email is same as current email');
+        return;
+      }
+
+      setEmailChangeLoading(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('No authenticated user found');
+
+      const authToken = await currentUser.getIdToken();
+      const adminUid = currentUser.uid;
+      const agentUid = agentData.uid;
+
+      const res = await fetch('/api/user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          action: 'updateEmail',
+          uid: agentUid,
+          newEmail
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update email');
+
+      // Update Firestore
+      const agentRef = doc(db, 'users', adminUid, 'agents', agentUid);
+      await updateDoc(agentRef, { email: newEmail, updatedAt: new Date() });
+
+      antMessage.success('Email updated successfully!');
+      emailForm.resetFields();
+      setShowEmailChange(false);
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      if (error?.errorFields) return; // validation error, AntD handles it
+      antMessage.error(error.message || 'Failed to update email');
+    } finally {
+      setEmailChangeLoading(false);
+    }
   };
 
   const uploadFile = async (uid, file, path) => {
@@ -413,13 +470,68 @@ const AgentManagement = ({ agentData = null, mode = 'add', onSuccess,isAgentDraw
                       { max: 50, message: 'Email cannot exceed 50 characters' }
                     ]}
                   >
-                    <Input 
-                      prefix={<MailOutlined />} 
-                      placeholder="agent@example.com" 
-                      size="large" 
+                    <Input
+                      prefix={<MailOutlined />}
+                      placeholder="agent@example.com"
+                      size="large"
                       disabled={isEditMode}
                     />
                   </Form.Item>
+
+                  {isEditMode && (
+                    <div className="md:col-span-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Button
+                          size="small"
+                          type={showEmailChange ? 'default' : 'dashed'}
+                          icon={<MailOutlined />}
+                          onClick={() => {
+                            setShowEmailChange(!showEmailChange);
+                            emailForm.resetFields();
+                          }}
+                        >
+                          {showEmailChange ? 'Cancel Email Change' : 'Change Email'}
+                        </Button>
+                      </div>
+
+                      {showEmailChange && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                          <p className="text-amber-800 text-sm font-medium mb-3">
+                            ⚠️ Changing email will update both login credentials and records.
+                          </p>
+                          <Form form={emailForm} layout="vertical">
+                            <div className="flex gap-2 items-end">
+                              <Form.Item
+                                name="newEmail"
+                                label="New Email Address"
+                                className="flex-1 mb-0"
+                                rules={[
+                                  { required: true, message: 'Please enter new email' },
+                                  { type: 'email', message: 'Please enter a valid email' },
+                                  { max: 50, message: 'Email cannot exceed 50 characters' }
+                                ]}
+                              >
+                                <Input
+                                  prefix={<MailOutlined />}
+                                  placeholder="new@example.com"
+                                  size="large"
+                                />
+                              </Form.Item>
+                              <Button
+                                type="primary"
+                                size="large"
+                                loading={emailChangeLoading}
+                                onClick={handleEmailChange}
+                                className="!bg-amber-700 hover:!bg-amber-800 mb-0"
+                              >
+                                Update Email
+                              </Button>
+                            </div>
+                          </Form>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <Form.Item
                     name="phone"

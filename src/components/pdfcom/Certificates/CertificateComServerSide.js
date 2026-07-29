@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   },
   footerLabel: {
     fontSize: 9.5,
-    color: '#666',
+    color: '#ef4444',
     marginTop:5,
     fontWeight: 'bold',
   },

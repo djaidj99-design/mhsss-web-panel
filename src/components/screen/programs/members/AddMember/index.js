@@ -58,6 +58,7 @@ const AddMember = () => {
   const [documentFront, setDocumentFront] = useState([]);
   const [documentBack, setDocumentBack] = useState([]);
   const [guardianDocument, setGuardianDocument] = useState([]);
+  const [guardianDocumentBack, setGuardianDocumentBack] = useState([]);
   const [isAadhaarChecking, setIsAadhaarChecking] = useState(false);
   const [aadhaarError, setAadhaarError] = useState(null);
   // Extra Dynamic Fields State
@@ -67,7 +68,7 @@ const AddMember = () => {
 
   // Indian states and districts
   const [districts, setDistricts] = useState([]);
-  
+
   // New state for existing member selection
   const [existingMemberPhone, setExistingMemberPhone] = useState('');
   const [existingMemberList, setExistingMemberList] = useState([]);
@@ -78,7 +79,6 @@ const AddMember = () => {
   // Store original birth date and join date
   const [storedBirthDate, setStoredBirthDate] = useState(null);
   const [storedJoinDate, setStoredJoinDate] = useState(dayjs());
-const [closingDays, setClosingDays] = useState(null);
   // Reset form when drawer opens
   useEffect(() => {
     if (open) {
@@ -94,6 +94,7 @@ const [closingDays, setClosingDays] = useState(null);
       setDocumentFront([]);
       setDocumentBack([]);
       setGuardianDocument([]);
+      setGuardianDocumentBack([]);
       setExtraFields([]);
       setDistricts([]);
       setIsJoinFeesDone(false);
@@ -497,6 +498,7 @@ const [closingDays, setClosingDays] = useState(null);
         documentFront: selectedExistingMember.documentFrontURL ? { url: selectedExistingMember.documentFrontURL } : null,
         documentBack: selectedExistingMember.documentBackURL ? { url: selectedExistingMember.documentBackURL } : null,
         guardianDocument: selectedExistingMember.guardianDocumentURL ? { url: selectedExistingMember.guardianDocumentURL } : null,
+        guardianDocumentBack: selectedExistingMember.guardianDocumentBackURL ? { url: selectedExistingMember.guardianDocumentBackURL } : null,
       };
     } else {
       // Upload new files
@@ -540,6 +542,13 @@ const [closingDays, setClosingDays] = useState(null);
           filesToUpload.push({
             file: guardianDocument[0].originFileObj,
             name: 'guardianDocument'
+          });
+        }
+
+        if (guardianDocumentBack.length && guardianDocumentBack[0].originFileObj) {
+          filesToUpload.push({
+            file: guardianDocumentBack[0].originFileObj,
+            name: 'guardianDocumentBack'
           });
         }
 
@@ -617,6 +626,7 @@ joinFeesRemainingAmount: values?.joinFeesPaymentType === 'custom' && values?.cus
         documentFrontURL: fileUrls.documentFront?.url || '',
         documentBackURL: fileUrls.documentBack?.url || '',
         guardianDocumentURL: fileUrls.guardianDocument?.url || '',
+        guardianDocumentBackURL: fileUrls.guardianDocumentBack?.url || '',
         extraDetails: extraFields.filter(f => f.label && f.value),
         createdAt: new Date(),
       };
@@ -1274,8 +1284,8 @@ joinFeesRemainingAmount: values?.joinFeesPaymentType === 'custom' && values?.cus
 
                       <Col span={8}>
                         <Form.Item
-                          label="वारिसदार का दस्तावेज़ (Optional)"
-                          tooltip="वारिसदार की आईडी अपलोड करें (वैकल्पिक)"
+                          label="वारिसदार दस्तावेज़ अग्र (Front) (Optional)"
+                          tooltip="वारिसदार की आईडी का अग्र भाग अपलोड करें (वैकल्पिक)"
                         >
                           <Upload
                             listType="picture-card"
@@ -1288,7 +1298,30 @@ joinFeesRemainingAmount: values?.joinFeesPaymentType === 'custom' && values?.cus
                             {!guardianDocument.length && (
                               <div>
                                 <UploadOutlined />
-                                <div style={{ marginTop: 8 }}>वारिसदार</div>
+                                <div style={{ marginTop: 8 }}>वारि. फ्रंट</div>
+                              </div>
+                            )}
+                          </Upload>
+                        </Form.Item>
+                      </Col>
+
+                      <Col span={8}>
+                        <Form.Item
+                          label="वारिसदार दस्तावेज़ पिछला (Back) (Optional)"
+                          tooltip="वारिसदार की आईडी का पिछला भाग अपलोड करें (वैकल्पिक)"
+                        >
+                          <Upload
+                            listType="picture-card"
+                            fileList={guardianDocumentBack}
+                            onChange={handleUploadChange(setGuardianDocumentBack)}
+                            onPreview={onPreview}
+                            beforeUpload={() => false}
+                            maxCount={1}
+                          >
+                            {!guardianDocumentBack.length && (
+                              <div>
+                                <UploadOutlined />
+                                <div style={{ marginTop: 8 }}>वारि. बैक</div>
                               </div>
                             )}
                           </Upload>
@@ -1521,42 +1554,6 @@ joinFeesRemainingAmount: values?.joinFeesPaymentType === 'custom' && values?.cus
     </>
   )}
 </Card>
-{/* Membership Closing Days */}
-<Divider orientation="left">सदस्यता समाप्ति</Divider>
-<Card size="small">
-  <Row gutter={16}>
-    <Col span={24}>
-      <Form.Item
-        name="closingMonths"
-        label="सदस्यता समाप्ति महीने (Membership Closing Months)"
-        tooltip="कितने महीनों बाद यह सदस्य बंद/निष्क्रिय हो जाएगा?"
-        rules={[
-          { 
-            validator: (_, value) => {
-              if (value && (value < 0 || value > 120)) {
-                return Promise.reject(new Error('कृपया 0 से 120 महीनों के बीच मान दर्ज करें'));
-              }
-              return Promise.resolve();
-            }
-          }
-        ]}
-      >
-        <Input
-          type="number"
-          size="large"
-          placeholder="महीनों की संख्या दर्ज करें (उदा: 6, 12, 24)"
-          prefix={<CalendarOutlined />}
-          suffix="महीने"
-          onChange={(e) => {
-            const months = parseInt(e.target.value);
-            setClosingDays(months);
-          }}
-        />
-      </Form.Item>
-    </Col>
-  </Row>
-</Card>
-
                 {/* Hidden field for age group ID */}
                 <Form.Item name="ageGroup" hidden>
                   <Input />
