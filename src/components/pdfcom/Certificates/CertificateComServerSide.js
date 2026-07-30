@@ -16,8 +16,8 @@ import { TrsutData } from '@/lib/constentData';
 Font.register({
   family: 'NotoSansDevanagari',
   fonts: [
-    { src: NotoSansDevanagari,        fontWeight: 'normal' },
-    { src: NotoSansDevanagariBold,    fontWeight: 'bold'   },
+    { src: NotoSansDevanagari, fontWeight: 'normal' },
+    { src: NotoSansDevanagariBold, fontWeight: 'bold' },
   ],
 });
 
@@ -182,9 +182,8 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
 
-  // Note / terms box – limited to 80% width so it doesn't overlap the right-side stamp
+  // Note / terms box
   noteBox: {
-    width: '80%',
     borderWidth: 1,
     borderColor: '#888',
     borderStyle: 'dashed',
@@ -233,11 +232,11 @@ const MemberNoBoxes = ({ value = '', minCount = 5 }) => {
  * Input dateStr: "DD-MM-YYYY"
  */
 const DateBoxes = ({ dateStr = '' }) => {
-  const parts  = dateStr.split('-');
-  const dd     = (parts[0] || '').padStart(2, '0');
-  const mm     = (parts[1] || '').padStart(2, '0');
-  const yyyy   = (parts[2] || '').padStart(4, '0');
-  const group  = (s) => s.split('').map((d, i) => <DigitBox key={i} digit={d} />);
+  const parts = dateStr.split('-');
+  const dd = (parts[0] || '').padStart(2, '0');
+  const mm = (parts[1] || '').padStart(2, '0');
+  const yyyy = (parts[2] || '').padStart(4, '0');
+  const group = (s) => s.split('').map((d, i) => <DigitBox key={i} digit={d} />);
   return (
     <View style={styles.digitRow}>
       {group(dd)}
@@ -286,9 +285,9 @@ const Certificate = ({ data, selectedProgram }) => {
   // Priority: applicationNumber → registrationNumber → memberNumber
   // Keep full value including any prefix letters (e.g. "MSH001", "R482939")
   const memberNo = String(
-    data?.applicationNumber   ||   // e.g. "MSH001"
-    data?.registrationNumber  ||   // e.g. "R482939"
-    data?.memberNumber        ||   // e.g. 5  → "00005"
+    data?.applicationNumber ||   // e.g. "MSH001"
+    data?.registrationNumber ||   // e.g. "R482939"
+    data?.memberNumber ||   // e.g. 5  → "00005"
     ''
   ).trim();
 
@@ -341,44 +340,45 @@ const Certificate = ({ data, selectedProgram }) => {
 
             {/* Row 1 */}
             <View style={styles.fieldRow}>
-              <Field label="नामः"              value={data?.displayName}                                      labelWidth={76} />
-              <Field label="जन्मतिथि"         value={data?.bobDate}                                          labelWidth={58} />
+              <Field label="नामः" value={data?.displayName} labelWidth={76} />
+              <Field label="जन्मतिथि" value={data?.bobDate} labelWidth={58} />
             </View>
 
             {/* Row 2 */}
             <View style={styles.fieldRow}>
-              <Field label="पिता/पति का नाम"  value={data?.fatherName}                                       labelWidth={76} />
-              <Field label="आधार न."          value={data?.aadhaarNo}                                        labelWidth={58} />
+              <Field label="पिता/पति का नाम" value={data?.fatherName} labelWidth={76} />
+              <Field label="आधार न." value={data?.aadhaarNo} labelWidth={58} />
             </View>
 
             {/* Row 3 */}
             <View style={styles.fieldRow}>
-              <Field label="मोबाइल नं"        value={data?.phone}                                            labelWidth={76} />
-              <Field label="उम्र"              value={age}                                                    labelWidth={58} />
+              <Field label="मोबाइल नं" value={data?.phone} labelWidth={76} />
+              <Field label="उम्र" value={age} labelWidth={58} />
             </View>
 
             {/* Row 4 */}
             <View style={styles.fieldRow}>
-              <Field label="वारिसदार"          value={data?.guardian}                                         labelWidth={76} />
-              <Field label="वारिस आधार"        value={data?.guardianAadhaarNo || '-'}                         labelWidth={58} />
+              <Field label="वारिसदार" value={data?.guardian} labelWidth={76} />
+                  <Field label="सम्बन्ध" value={data?.guardianRelation} labelWidth={58} />
+           
             </View>
 
             {/* Row 5 */}
             <View style={styles.fieldRow}>
-              <Field label="जाति"              value={data?.jati}                                             labelWidth={76} />
-              <Field label="सम्बन्ध"          value={data?.guardianRelation}                                  labelWidth={58} />
+              <Field label="जाति" value={data?.jati} labelWidth={76} />
+             <Field label="गोत्र" value={data?.gotra || ''} labelWidth={58} />
             </View>
 
             {/* Row 6 */}
             <View style={styles.fieldRow}>
-              <Field label="गाँव"              value={data?.village}                                          labelWidth={76} />
-              <Field label="निवास स्थान"      value={data?.currentAddress || data?.village || ''}            labelWidth={58} />
+              <Field label="गाँव" value={data?.village} labelWidth={76} />
+              <Field label="निवास स्थान" value={data?.currentAddress || data?.village || ''} labelWidth={58} />
             </View>
 
             {/* Row 7 */}
             <View style={styles.fieldRow}>
-              <Field label="Agent"              value={data?.addedByName || '—'}                              labelWidth={76} />
-              <Field label="जिला & राज्य"     value={districtState}                                          labelWidth={58} />
+              <Field label="Agent" value={data?.addedByName || '—'} labelWidth={76} />
+              <Field label="जिला & राज्य" value={districtState} labelWidth={58} />
             </View>
 
           </View>
