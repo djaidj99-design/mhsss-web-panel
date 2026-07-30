@@ -423,7 +423,7 @@ const Certificate = ({data,selectedProgram}) => (
             <Text style={styles.labelJoinDate}> सदस्यता क्रमांक : </Text>
             <Text style={[styles.valueJoinDate,{
               color:"#ef4444"
-            }]}>{data?.registrationNumber}</Text>
+            }]}>{data?.applicationNumber || data?.registrationNumber}</Text>
             </view>
                     <view style={styles.JoinDateBox}>
             <Text style={styles.labelJoinDate}>दिनांक : </Text>

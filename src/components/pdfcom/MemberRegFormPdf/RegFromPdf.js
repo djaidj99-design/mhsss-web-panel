@@ -322,7 +322,7 @@ const RegFormPdf = ({data, selectedProgram}) => {
     <Document>
       <Page size="A5" orientation="portrait" style={styles.page}>
         <View style={styles.outerBorder}>
-          <Text style={styles.serialNumber}>{data.registrationNumber}</Text>
+          <Text style={styles.serialNumber}>{data?.applicationNumber || data.registrationNumber}</Text>
           <View style={styles.innerBorder}>
             {/* Top Prayer Text */}
             <View style={styles.topText}>
@@ -384,7 +384,7 @@ const RegFormPdf = ({data, selectedProgram}) => {
               <View style={styles.twoColumnRow}>
                 <View style={styles.halfField}>
                   <Text style={styles.label}>सदस्यता क्रमांक:</Text>
-                  <Text style={[styles.valueFixed, { minWidth: 65 }]}>{data.registrationNumber}</Text>
+                  <Text style={[styles.valueFixed, { minWidth: 65 }]}>{data?.applicationNumber || data.registrationNumber}</Text>
                 </View>
                 <View style={styles.halfField}>
                   <Text style={styles.label}>दिनांक:</Text>
@@ -480,10 +480,10 @@ const RegFormPdf = ({data, selectedProgram}) => {
 
               {/* Join Fees and Scheme Name - Two Columns */}
               <View style={[styles.twoColumnRow,{width:'100%'}]}>
-                <View style={styles.halfField}>
+                {/* <View style={styles.halfField}>
                   <Text style={styles.label}>सदस्यता शुल्क:</Text>
                   <Text style={styles.amountValue}>₹{formatToHundreds(data.joinFees)}/- {data.joinFeesDone?'':'बकाया'}</Text>
-                </View>
+                </View> */}
                 <View style={styles.halfField}>
                   <Text style={styles.label}>योजना नाम:</Text>
                   <Text style={styles.value}>{selectedProgram.hiname}</Text>
@@ -491,13 +491,13 @@ const RegFormPdf = ({data, selectedProgram}) => {
               </View>
 
               {/* Payment Amount */}
-              <View style={styles.amountRow}>
+              {/* <View style={styles.amountRow}>
                 <Text style={styles.amountLabel}>
                   प्रत्येक {selectedProgram.isSuraksha ? 'मृत्यु' : 'विवाह'} पर सहयोग राशि:
                 </Text>
                 <Text style={styles.amountValue}>₹{data.payAmount}/-</Text>
                 <Text style={[styles.amountLabel, { marginLeft: 4 }]}>रुपये</Text>
-              </View>
+              </View> */}
 
               {/* Age Group and Location Group - Two Columns */}
               <View style={styles.twoColumnRow}>
