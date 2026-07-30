@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   // 40 % × 419 ≈ 168 pt  →  headerSpacer pushes content below the header.
   // Fine-tune this single value if the content drifts up or down.
   headerSpacer: {
-    height: 150,
+    height: 140,
   },
 
   // ── Top info row (Member No | Scheme banner | Date) ──────────────────────
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   topLabel: {
-    fontSize: 9,
+    fontSize: 11,
     color: '#13306b',
     fontWeight: 'bold',
     marginBottom: 3,
@@ -82,8 +82,8 @@ const styles = StyleSheet.create({
 
   // Digit box used for member number and date
   digitBox: {
-    width: 15,
-    height: 18,
+    width: 18,
+    height: 20,
     border: '1.5px solid #333',
     alignItems: 'center',
     justifyContent: 'center',
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     marginRight: 2,
   },
   digitText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#111',
   },
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   schemeText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#ffffff',
     fontWeight: 'bold',
     letterSpacing: 0.3,
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   },
   fieldRow: {
     flexDirection: 'row',
-    marginBottom: 4,
+    marginBottom: 5,
   },
   fieldGroup: {
     flex: 1,
@@ -138,17 +138,17 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   fieldLabel: {
-    fontSize: 9.5,
+    fontSize: 11,
     color: '#8B0000',
     fontWeight: 'bold',
   },
   fieldColon: {
-    fontSize: 9.5,
+    fontSize: 11,
     color: '#444',
     marginHorizontal: 2,
   },
   fieldValue: {
-    fontSize: 9.5,
+    fontSize: 11,
     color: '#000',
     fontWeight: 'bold',
     flex: 1,
@@ -189,9 +189,10 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     paddingHorizontal: 6,
     paddingVertical: 4,
+    width: '88%',
   },
   noteText: {
-    fontSize: 8,
+    fontSize: 10,
     color: '#111',
     lineHeight: 1.45,
     textAlign: 'justify',
@@ -366,13 +367,13 @@ const Certificate = ({ data, selectedProgram }) => {
             {/* Row 5 */}
             <View style={styles.fieldRow}>
               <Field label="जाति" value={data?.jati} labelWidth={76} />
-             <Field label="गोत्र" value={data?.gotra || ''} labelWidth={58} />
+              <Field label="वारिस आधार" value={data?.guardianAadhaarNo || '-'} labelWidth={58} />
             </View>
 
             {/* Row 6 */}
             <View style={styles.fieldRow}>
               <Field label="गाँव" value={data?.village} labelWidth={76} />
-              <Field label="निवास स्थान" value={data?.currentAddress || data?.village || ''} labelWidth={58} />
+              <Field label="निवास स्थान" value={data?.village || data?.village || ''} labelWidth={58} />
             </View>
 
             {/* Row 7 */}
