@@ -253,6 +253,7 @@ const AddMember = () => {
       displayName: member.displayName,
       fatherName: member.fatherName,
       guardian: member.guardian,
+      guardianAadhaarNo: member.guardianAadhaarNo || '',
       gender: member.gender,
       guardianRelation: member.guardianRelation,
       jati: member.jati,
@@ -577,6 +578,7 @@ const AddMember = () => {
         displayName: values.displayName,
         fatherName: values.fatherName,
         guardian: values.guardian,
+        guardianAadhaarNo: values.guardianAadhaarNo || '',
         gender: values?.gender,
         guardianRelation: values.guardianRelation,
         jati: values.jati,
@@ -953,6 +955,21 @@ joinFeesRemainingAmount: values?.joinFeesPaymentType === 'custom' && values?.cus
                         </Select>
                       </Form.Item>
                     </div>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Form.Item
+                      name="guardianAadhaarNo"
+                      label="वारिसदार आधार नं (Optional)"
+                      rules={[
+                        { len: 12, message: '12 अंक होने चाहिए' },
+                        { pattern: /^[0-9]{12}$/, message: 'केवल 12 अंक' }
+                      ]}
+                    >
+                      <Input prefix={<IdcardOutlined />} placeholder="वारिसदार का 12 अंकीय आधार नं" maxLength={12} />
+                    </Form.Item>
                   </Col>
                 </Row>
 

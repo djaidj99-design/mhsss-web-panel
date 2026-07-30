@@ -234,6 +234,7 @@ useEffect(() => {
       displayName: memberData.displayName,
       fatherName: memberData.fatherName,
       guardian: memberData.guardian,
+      guardianAadhaarNo: memberData.guardianAadhaarNo || '',
       guardianRelation: memberData.guardianRelation,
       gender: memberData.gender,
       jati: memberData.jati,
@@ -493,6 +494,7 @@ console.log(values,'values')
         dateJoin: values.dateJoin.format('DD-MM-YYYY'),
         fatherName: values.fatherName,
         guardian: values.guardian,
+        guardianAadhaarNo: values.guardianAadhaarNo || '',
         guardianRelation: values.guardianRelation,
         gender: values.gender,
         jati: values.jati,
@@ -741,6 +743,21 @@ console.log(values,'values')
                     </Select>
                   </Form.Item>
                 </div>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={8}>
+                <Form.Item
+                  name="guardianAadhaarNo"
+                  label="वारिसदार आधार नं (Optional)"
+                  rules={[
+                    { len: 12, message: '12 अंक होने चाहिए' },
+                    { pattern: /^[0-9]{12}$/, message: 'केवल 12 अंक' }
+                  ]}
+                >
+                  <Input prefix={<IdcardOutlined />} placeholder="वारिसदार का 12 अंकीय आधार नं" maxLength={12} />
+                </Form.Item>
               </Col>
             </Row>
 
