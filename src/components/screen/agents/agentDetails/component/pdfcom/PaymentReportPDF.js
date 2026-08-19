@@ -603,7 +603,10 @@ const PaymentStatusPDF = ({
   // ─── Marriage Table — improved header readability, fills space ───
   const renderMarriageTable = (marriages, startIndex, showTotal, memberStats) => {
     const fillerCount = Math.max(0, ROWS_PER_PAGE - marriages.length);
-
+const maskPhone = (phone) => {
+  if (!phone) return '';
+  return phone.toString().replace(/^(\d{4})\d{6}$/, '$1******');
+};
     return (
       <View style={styles.table}>
         {/* ── Table Header ── */}
@@ -656,7 +659,7 @@ const PaymentStatusPDF = ({
               <Text style={[styles.textCenter, styles.dataText]}>{marriage.marriageDate || '-'}</Text>
             </View>
             <View style={[styles.tableCell, styles.colPhone]}>
-              <Text style={[styles.textCenter, styles.dataText]}>{marriage.closingPhone || '-'}</Text>
+              <Text style={[styles.textCenter, styles.dataText]}>{maskPhone(marriage.closingPhone) || '-'}</Text>
             </View>
             <View style={[styles.tableCell, styles.colVillage]}>
               <Text style={[styles.textCenter, styles.dataText]}>{marriage.closingVillage || '-'}</Text>

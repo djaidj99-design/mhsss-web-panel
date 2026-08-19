@@ -486,7 +486,7 @@ const ClosingFormPdf = ({data, selectedProgram,payStatus,paymentData}) => {
     dateJoin: formatDateForDisplay(data.dateJoin),
     bobDate: formatDateForDisplay(data.bobDate),
     createdAt: formatDateForDisplay(data.createdAt),
-    closingDate: formatDateForDisplay(paymentData?.closingDate),
+    closingDate: data.closing_date,
     
     // Payment data with proper formatting
     memberContributed: paymentData?.memberContributed || payStatus?.totalAmount || 0,
@@ -563,7 +563,7 @@ const ClosingFormPdf = ({data, selectedProgram,payStatus,paymentData}) => {
                 </View>
                 <View style={styles.halfField}>
                   <Text style={styles.label}>दिनांक:</Text>
-                  <Text style={[styles.valueFixed, { minWidth: 80 }]}>{formattedData.dateJoin}</Text>
+                  <Text style={[styles.valueFixed, { minWidth: 80 }]}>{formattedData.closingDate}</Text>
                 </View>
               </View>
 

@@ -4,7 +4,7 @@ import logo from "@/app/api/helperfile/Images/logo";
 import semkariLogo from "@/app/api/helperfile/Images/semkariLogo";
 
 export const TrsutData={
-    name:"मित्रा हिंदू समाज सेवा संस्थान",
+    name:"मित्रा हिंदू समाज सेवा फाउंडेशन",
     cityState:"राजस्थान-गुजरात",
     address:"पता:- प्रताप चौक, रबारियों का टांका, बलोतरा – 344022 (राज.)",
     contact:"कार्यालय नं. – 9166945821 (धनराज सोलंकी)",
