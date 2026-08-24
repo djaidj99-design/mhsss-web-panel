@@ -24,7 +24,8 @@ export const TrsutData={
 
 export const pdfColors={
 bgColor:'#ffffff',
-borderColor:'#0d5497',
+borderColor:'#92201e',
+innerBorder:'#246837',
 headingColor:'#eb1e23',
 schemeColor:'#1a0f5e',
 infoLabelColor:'#EA1F25',

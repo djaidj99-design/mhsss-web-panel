@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   innerBorder: {
-    border: `1px solid ${pdfColors.borderColor}`,
+    border: `1px solid ${pdfColors.innerBorder}`,
     padding: 8,
     flex: 1,
     display: 'flex',
@@ -301,13 +301,12 @@ const styles = StyleSheet.create({
 
   // Column widths
   colSerial:       { width: '5%',  alignItems: 'center' },
-  colMarriageName: { width: '20%', alignItems: 'flex-start' },
-  colFatherName:   { width: '18%', alignItems: 'flex-start' },
-  colRegNo:        { width: '10%', alignItems: 'center' },
-  colDate:         { width: '10%', alignItems: 'center' },
-  colPhone:        { width: '12%', alignItems: 'center' },
-  colVillage:      { width: '15%', alignItems: 'center' },
-  colAmount:       { width: '8%', alignItems: 'flex-end' },
+  colMarriageName: { width: '23%', alignItems: 'flex-start' },
+  colFatherName:   { width: '20%', alignItems: 'flex-start' },
+  colRegNo:        { width: '11%', alignItems: 'center' },
+  colDate:         { width: '11%', alignItems: 'center' },
+  colVillage:      { width: '22%', alignItems: 'center' },
+  colAmount:       { width: '8%',  alignItems: 'flex-end' },
 
   textLeft:   { textAlign: 'left' },
   textCenter: { textAlign: 'center' },
@@ -626,9 +625,6 @@ const maskPhone = (phone) => {
           <View style={[styles.tableHeaderCell, styles.colDate]}>
             <Text style={styles.textCenter}>तिथि</Text>
           </View>
-          <View style={[styles.tableHeaderCell, styles.colPhone]}>
-            <Text style={styles.textCenter}>फोन नं.</Text>
-          </View>
           <View style={[styles.tableHeaderCell, styles.colVillage]}>
             <Text style={styles.textCenter}>गाँव</Text>
           </View>
@@ -658,9 +654,6 @@ const maskPhone = (phone) => {
             <View style={[styles.tableCell, styles.colDate]}>
               <Text style={[styles.textCenter, styles.dataText]}>{marriage.marriageDate || '-'}</Text>
             </View>
-            <View style={[styles.tableCell, styles.colPhone]}>
-              <Text style={[styles.textCenter, styles.dataText]}>{maskPhone(marriage.closingPhone) || '-'}</Text>
-            </View>
             <View style={[styles.tableCell, styles.colVillage]}>
               <Text style={[styles.textCenter, styles.dataText]}>{marriage.closingVillage || '-'}</Text>
             </View>
@@ -681,7 +674,7 @@ const maskPhone = (phone) => {
             <View style={[styles.tableCell, styles.colSerial]}>
               <Text style={[styles.textCenter, styles.emptyTableText]}>—</Text>
             </View>
-            {['colMarriageName','colFatherName','colRegNo','colDate','colPhone','colVillage'].map((col, ci) => (
+            {['colMarriageName','colFatherName','colRegNo','colDate','colVillage'].map((col, ci) => (
               <View key={ci} style={[styles.tableCell, styles[col]]}>
                 <Text style={styles.emptyTableText}> </Text>
               </View>

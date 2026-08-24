@@ -312,13 +312,10 @@ const styles = StyleSheet.create({
     width: '22%',
   },
   colJati: {
-    width: '15%',
-  },
-  colPhone: {
     width: '18%',
   },
   colVillage: {
-    width: '20%',
+    width: '26%',
   },
   
   footer: {
@@ -530,9 +527,6 @@ const MemberListPdf = ({
           <View style={[styles.tableHeaderCell, styles.colJati]}>
             <Text>जाति </Text>
           </View>
-          <View style={[styles.tableHeaderCell, styles.colPhone]}>
-            <Text>फोन नंबर</Text>
-          </View>
           <View style={[styles.tableHeaderCell, styles.colVillage, { borderRightWidth: 0 }]}>
             <Text>गाँव/शहर</Text>
           </View>
@@ -577,10 +571,6 @@ const MemberListPdf = ({
               <Text>{member.jati || 'N/A'}</Text>
             </View>
             
-            {/* Phone Number */}
-            <View style={[styles.tableCell, styles.colPhone]}>
-              <Text>{member.phone || 'N/A'}</Text>
-            </View>
             
             {/* Village/City */}
             <View style={[styles.tableCell, styles.colVillage, { borderRightWidth: 0 }]}>

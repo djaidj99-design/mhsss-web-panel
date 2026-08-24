@@ -21,11 +21,32 @@ const geistMono = Geist_Mono({
 // Custom AntD theme configuration
 const theme = {
   token: {
-    colorPrimary: '#1d4ed8',
-    colorSuccess: '#059669',
-    colorWarning: '#d97706',
-    colorError: '#dc2626',
-    colorInfo: '#2563eb',
+    colorPrimary: '#8B1A1A',       // maroon – brand primary
+    colorSuccess: '#2D6A1B',       // dark green
+    colorWarning: '#C45E0A',       // amber-orange
+    colorError:   '#dc2626',
+    colorInfo:    '#8B1A1A',
+    colorBorder:  '#d9b8b8',
+    borderRadius: 6,
+    fontFamily:   'Inter, -apple-system, sans-serif',
+  },
+  components: {
+    Button: {
+      colorPrimary:      '#8B1A1A',
+      colorPrimaryHover: '#6B1010',
+    },
+    Menu: {
+      colorItemBgSelected:     '#8B1A1A',
+      colorItemTextSelected:   '#ffffff',
+      colorItemTextHover:      '#8B1A1A',
+      colorItemBgHover:        '#F5E6E6',
+    },
+    Table: {
+      colorFillAlter:    '#FDF5F5',
+      headerBg:          '#6B1A1A',
+      headerColor:       '#ffffff',
+      headerSortActiveBg:'#8B1A1A',
+    },
   },
 };
 

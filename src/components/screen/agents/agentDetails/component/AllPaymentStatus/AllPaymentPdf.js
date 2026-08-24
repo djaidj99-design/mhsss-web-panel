@@ -185,9 +185,8 @@ const styles = StyleSheet.create({
   // Column Widths
   colSrNo: { width: '5%', alignItems: 'center' },
   colRegNo: { width: '10%', alignItems: 'center' },
-  colName: { width: '18%', alignItems: 'flex-start' },
-  colFatherName: { width: '15%', alignItems: 'flex-start' },
-  colPhone: { width: '11%', alignItems: 'center' },
+  colName: { width: '22%', alignItems: 'flex-start' },
+  colFatherName: { width: '18%', alignItems: 'flex-start' },
   colProgram: { width: '18%', alignItems: 'flex-start' },
   colAmountPending: { width: '11%', alignItems: 'flex-end' },
   colAmountPaid: { width: '11%', alignItems: 'flex-end' },
@@ -386,9 +385,6 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
       <View style={[styles.tableHeaderCell, styles.colFatherName]}>
         <Text style={[styles.textLeft, styles.smallTableText]}>पिता/पति का नाम</Text>
       </View>
-      <View style={[styles.tableHeaderCell, styles.colPhone]}>
-        <Text style={[styles.textCenter, styles.smallTableText]}>फोन नं.</Text>
-      </View>
       <View style={[styles.tableHeaderCell, styles.colProgram]}>
         <Text style={[styles.textLeft, styles.smallTableText]}>योजना</Text>
       </View>
@@ -451,12 +447,6 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
           </Text>
         </View>
         
-        {/* Phone */}
-        <View style={[styles.tableCell, styles.colPhone]}>
-          <Text style={[styles.textCenter, styles.smallTableText]}>
-            {row.phone || '-'}
-          </Text>
-        </View>
         
         {/* Program Name */}
         <View style={[styles.tableCell, styles.colProgram]}>

@@ -1,20 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  /* Primary Colors - Trustworthy blues with softer tones */
-  --primary-blue: #3b82f6;
-  --primary-dark: #1e40af;
-  --primary-light: #bfdbfe;
+  /* ── Brand: Maroon / Burgundy ── */
+  --primary-blue: #8B1A1A;          /* rename kept for compat – now maroon */
+  --primary-dark: #5C0F0F;
+  --primary-light: #F5E6E6;
 
-  /* Secondary Colors - Compassionate and financial tones */
-  --accent-gold: #f59e0b;
-  --accent-green: #10b981;
-  --accent-red: #ef4444;
-  --accent-love: #ec4899;
+  /* ── Accent palette ── */
+  --accent-gold:  #C9A227;          /* gold ornament / decorative */
+  --accent-green: #2D6A1B;          /* ADD MEMBER button */
+  --accent-orange: #C45E0A;         /* ADD AGENT button */
+  --accent-red:   #8B1A1A;
+  --accent-love:  #ec4899;
 
-  /* Neutral Colors - Professional and soft */
-  --background: #f9fafb;
-  --foreground: #1f2937;
+  /* ── Neutral – warm whites ── */
+  --background: #FDF8F0;            /* warm cream page bg */
+  --foreground: #2C1A0E;            /* dark warm brown text */
+  --sidebar-bg: #FDF5EE;            /* sidebar background */
   --gray-50: #f9fafb;
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
@@ -60,16 +62,17 @@
 
 /* Tailwind CSS theme variables */
 @theme inline {
-  /* Primary Colors */
-  --color-primary: var(--primary-blue);
-  --color-primary-dark: var(--primary-dark);
+  /* Primary – maroon */
+  --color-primary:       var(--primary-blue);
+  --color-primary-dark:  var(--primary-dark);
   --color-primary-light: var(--primary-light);
 
   /* Accent Colors */
-  --color-accent-gold: var(--accent-gold);
-  --color-accent-green: var(--accent-green);
-  --color-accent-red: var(--accent-red);
-  --color-accent-love: var(--accent-love);
+  --color-accent-gold:   var(--accent-gold);
+  --color-accent-green:  var(--accent-green);
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-red:    var(--accent-red);
+  --color-accent-love:   var(--accent-love);
 
   /* Special Colors */
   --color-donation: var(--donation-highlight);
@@ -113,16 +116,36 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Tailwind CSS overrides */
-/* For Ant Design components */
+/* ── Ant Design overrides ── */
 .ant-btn-primary {
   background-color: var(--primary-blue) !important;
   border-color: var(--primary-blue) !important;
 }
-
 .ant-btn-primary:hover {
   background-color: var(--primary-dark) !important;
   border-color: var(--primary-dark) !important;
+}
+
+/* Table header maroon */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: #6B1A1A !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+.ant-table-wrapper .ant-table-thead > tr > th.ant-table-column-sort,
+.ant-table-wrapper .ant-table-thead > tr > th:hover {
+  background: #8B1A1A !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #FDF0EE !important;
+}
+
+/* Focus ring – maroon */
+.ant-input:focus, .ant-input-focused,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused {
+  border-color: var(--primary-blue) !important;
+  box-shadow: 0 0 0 2px rgba(139,26,26,0.15) !important;
 }
 
 .ant-popover-inner {

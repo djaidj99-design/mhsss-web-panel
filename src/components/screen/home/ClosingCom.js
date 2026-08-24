@@ -33,6 +33,8 @@ import {
   FiUser, FiCalendar, FiMessageSquare, FiImage, FiPlus,
   FiAlertTriangle
 } from 'react-icons/fi';
+import { useSelector } from 'react-redux';
+import GenerateRasidEntry from './ClosingMember/GenerateRasidEntry';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -94,6 +96,8 @@ const ClosingCom = ({ user, selectedProgram }) => {
   const [filePreview, setFilePreview] = useState(null);
   const { message, modal } = App.useApp();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isOpenRasidEntry, setIsOpenRasidEntry] = useState(false);
+
   const [isOpenBanner, setIsOpenBanner] = useState(false);
   const [isEditPdfDataOpen, setIsEditPdfDataOpen] = useState(false);
   const [closingGroups, setClosingGroups] = useState([]);
@@ -104,7 +108,7 @@ const ClosingCom = ({ user, selectedProgram }) => {
   const [groupModalVisible, setGroupModalVisible] = useState(false);
   const [changingGroup, setChangingGroup] = useState(false);
   const [revertingId, setRevertingId] = useState(null);
-
+     const TrustData = useSelector((state) => state.data.trustData);
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchClosingGroups = async () => {
     if (!user || !selectedProgram) return;
@@ -696,6 +700,9 @@ const ClosingCom = ({ user, selectedProgram }) => {
             </div>
           </div>
           <div className="header-actions">
+                                  <button className="hdr-btn" onClick={() => setIsOpenRasidEntry(true)}>
+              <FiPlus size={13} /> Create Payment Entry
+            </button>
             <button className="hdr-btn" onClick={() => setIsOpenDrawer(true)}>
               <FiUsers size={13} /> Pay Status
             </button>
@@ -1026,14 +1033,23 @@ const ClosingCom = ({ user, selectedProgram }) => {
           setOpen={setIsOpen}
           memberData={selectedRecord}
           selectedProgram={selectedProgram}
+          TrustData={TrustData}
         />
-
+        {
+          isOpenRasidEntry && (
+            <GenerateRasidEntry
+              open={isOpenRasidEntry}
+              setOpen={setIsOpenRasidEntry}
+              selectedProgram={selectedProgram}
+              user={user} closingMemberList={allMembersData} />)
+        }
         <ClosingBannerImageDrawer
           open={isOpenBanner}
           onClose={() => setIsOpenBanner(false)}
           memberData={selectedRecord}
           selectedProgram={selectedProgram}
           user={user}
+           TrustData={TrustData}
         />
       </div>
     </>

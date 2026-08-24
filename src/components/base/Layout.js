@@ -220,7 +220,7 @@ export default function CustomDashboardLayout({ children }) {
           display: flex;
           height: 100vh;
           overflow: hidden;
-          background: #f1f5f9;
+          background: #F5EDE0;
           font-family: 'Outfit', sans-serif;
         }
 
@@ -307,9 +307,9 @@ export default function CustomDashboardLayout({ children }) {
         }
         .page-card {
           background: #fff;
-          border-radius: 16px;
-          border: 1px solid #f1f5f9;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03);
+          border-radius: 12px;
+          border: 1px solid #E8C9B0;
+          box-shadow: 0 1px 4px rgba(139,26,26,0.06), 0 4px 16px rgba(0,0,0,0.04);
           padding: 24px;
           min-height: calc(100vh - 140px);
         }
