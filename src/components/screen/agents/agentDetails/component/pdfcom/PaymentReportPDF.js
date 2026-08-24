@@ -600,8 +600,9 @@ const PaymentStatusPDF = ({
   );
 
   // ─── Marriage Table — improved header readability, fills space ───
-  const renderMarriageTable = (marriages, startIndex, showTotal, memberStats) => {
+  const renderMarriageTable = (marriages, startIndex, showTotal, memberStats, isLastPage = false) => {
     const fillerCount = Math.max(0, ROWS_PER_PAGE - marriages.length);
+    const pageAmount = marriages.reduce((s, m) => s + (parseFloat(m.amount) || 0), 0);
 const maskPhone = (phone) => {
   if (!phone) return '';
   return phone.toString().replace(/^(\d{4})\d{6}$/, '$1******');
@@ -685,27 +686,36 @@ const maskPhone = (phone) => {
           </View>
         ))}
 
-        {/* ── Total Row ── */}
-        {showTotal && memberStats && (
-          <View style={styles.totalRow}>
-            <View style={[styles.totalCell, { width: '88%', paddingLeft: 10 }]}>
-              <Text style={{ fontSize: 9, color: '#fff', fontWeight: 'bold' }}>
-                कुल बकाया ({memberStats.pendingCount} समापन) — इस पृष्ठ पर {marriages.length} रिकॉर्ड
-              </Text>
-            </View>
-            <View style={[styles.totalCell, {
-              width: '12%',
-              borderRightWidth: 0,
-              backgroundColor: '#8B0000',
-              alignItems: 'flex-end',
-              paddingRight: 8,
-            }]}>
-              <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>
-                {formatCurrency(memberStats.pendingAmount)}
-              </Text>
-            </View>
+        {/* ── Total Row — shown on every page ── */}
+        <View style={styles.totalRow}>
+          <View style={[styles.totalCell, { width: '55%', paddingLeft: 10 }]}>
+            <Text style={{ fontSize: 9, color: '#fff', fontWeight: 'bold' }}>
+              {isLastPage && memberStats
+                ? `कुल बकाया (${memberStats.pendingCount} समापन)`
+                : `इस पृष्ठ कुल (${marriages.length} रिकॉर्ड)`}
+            </Text>
           </View>
-        )}
+          <View style={[styles.totalCell, { width: '33%', alignItems: 'flex-end', paddingRight: 8 }]}>
+            <Text style={{ fontSize: 9, color: '#ffdddd', fontWeight: 'bold' }}>
+              {isLastPage && memberStats
+                ? `संपूर्ण: ${formatCurrency(memberStats.pendingAmount)}`
+                : `इस पृ.: ${formatCurrency(pageAmount)}`}
+            </Text>
+          </View>
+          <View style={[styles.totalCell, {
+            width: '12%',
+            borderRightWidth: 0,
+            backgroundColor: '#8B0000',
+            alignItems: 'flex-end',
+            paddingRight: 8,
+          }]}>
+            <Text style={{ fontSize: 10, color: '#fff', fontWeight: 'bold' }}>
+              {isLastPage && memberStats
+                ? formatCurrency(memberStats.pendingAmount)
+                : formatCurrency(pageAmount)}
+            </Text>
+          </View>
+        </View>
       </View>
     );
   };
@@ -791,7 +801,7 @@ const maskPhone = (phone) => {
                 बकाया समापन भुगतान विवरण — पृष्ठ {chunkIdx + 1}/{totalPagesForMember}
               </Text>
 
-              {renderMarriageTable(chunk, startIndex, isLastPage, isLastPage ? stats : null)}
+              {renderMarriageTable(chunk, startIndex, true, stats, isLastPage)}
 
               {/* Notice is pushed down via marginTop: 'auto' in its style */}
               <View style={styles.noticeSection}>

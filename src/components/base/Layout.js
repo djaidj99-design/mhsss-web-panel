@@ -156,8 +156,9 @@ export default function CustomDashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const dispatch = useDispatch();
-  const agentStatusChanged = useSelector((state) => state.data.getAgentDataChange);
+  const agentStatusChanged  = useSelector((state) => state.data.getAgentDataChange);
   const memberStatusChanged = useSelector((state) => state.data.setgetMemberDataChange);
+  const selectedProgram     = useSelector((state) => state.data.selectedProgram);
 
   const withoutLayout = ["/auth/login"];
 
@@ -170,25 +171,34 @@ export default function CustomDashboardLayout({ children }) {
     } catch (e) { console.error(e); }
   };
 
-  const getProgramData = async () => {
+  const getProgramData = async (forceReset = false) => {
     try {
       const col = collection(db, "users", user.uid, "programs");
       const snap = await getDocs(query(col, orderBy('createdAt', 'desc')));
       const programs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       dispatch(setPrograms(programs));
-      dispatch(setSelectedProgram(programs[0] || null));
+      // Only set selected program on first load or forced reset — never on page navigation
+      if (forceReset || !selectedProgram) {
+        dispatch(setSelectedProgram(programs[0] || null));
+      }
     } catch (e) { console.error(e); }
   };
 
+  // ① Auth redirect — runs on every path change (needs pathname)
   useEffect(() => {
     if (!loading && !user && !withoutLayout.includes(pathname)) {
       router.replace("/auth/login");
     }
+  }, [user, loading, pathname]);
+
+  // ② Data loading — only when user first logs in or agent list changes
+  //    NOT on page navigation, so selectedProgram stays intact
+  useEffect(() => {
     if (user) {
       getProgramData();
       getAgentData();
     }
-  }, [user, loading, pathname, agentStatusChanged, memberStatusChanged]);
+  }, [user, agentStatusChanged]);
 
   // Close on outside click
   useEffect(() => {

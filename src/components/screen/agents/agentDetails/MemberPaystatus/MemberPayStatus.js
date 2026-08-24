@@ -45,7 +45,7 @@ import {
   FolderOpenOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { PDFDownloadLink, PDFViewer } from '@react-pdf/renderer';
+import { PDFDownloadLink, PDFViewer, pdf } from '@react-pdf/renderer';
 import PaymentReportPDF from '../component/pdfcom/PaymentReportPDF';
 import { setSelectedProgram } from '@/redux/slices/commonSlice';
 import { collection, getDocs } from 'firebase/firestore';
@@ -581,6 +581,99 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
     return filteredData.filter((m) => selectedMembers.includes(m.memberId));
   }, [selectionMode, filteredData, selectedMembers]);
 
+  // Pending rasid: each member with only their pending marriages
+  const getPendingRasidData = useCallback(() => {
+    return getExportData()
+      .map((m) => ({ ...m, marriages: (m.marriages || []).filter((x) => x.status === 'pending') }))
+      .filter((m) => m.marriages.length > 0);
+  }, [getExportData]);
+
+  // Paid rasid: each member with only their paid marriages
+  const getPaidRasidData = useCallback(() => {
+    return getExportData()
+      .map((m) => ({ ...m, marriages: (m.marriages || []).filter((x) => x.status === 'paid') }))
+      .filter((m) => m.marriages.length > 0);
+  }, [getExportData]);
+
+  const getPendingFileName = useCallback(() => {
+    const a = agentInfo?.displayName?.replace(/\s+/g, '_') || 'Agent';
+    const p = selectedProgram?.name?.replace(/\s+/g, '_') || 'Program';
+    return `${a}_Pending_Rasid_${p}_${dayjs().format('DDMMYYYY')}.pdf`;
+  }, [agentInfo, selectedProgram]);
+
+  const getPaidFileName = useCallback(() => {
+    const a = agentInfo?.displayName?.replace(/\s+/g, '_') || 'Agent';
+    const p = selectedProgram?.name?.replace(/\s+/g, '_') || 'Program';
+    return `${a}_Paid_Rasid_${p}_${dayjs().format('DDMMYYYY')}.pdf`;
+  }, [agentInfo, selectedProgram]);
+
+  // ── Loading states for programmatic PDF download ──
+  const [pendingPdfLoading, setPendingPdfLoading] = useState(false);
+  const [paidPdfLoading, setPaidPdfLoading] = useState(false);
+  const [memberPendingPdfLoading, setMemberPendingPdfLoading] = useState(false);
+  const [memberPaidPdfLoading, setMemberPaidPdfLoading] = useState(false);
+
+  // ── Programmatic download helper ──
+  const downloadPdf = useCallback(async (docElement, fileName, setLoading) => {
+    try {
+      setLoading(true);
+      const blob = await pdf(docElement).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('PDF generation error:', e);
+      message.error('PDF generate करने में समस्या हुई');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleDownloadPending = useCallback(() => {
+    const data = getPendingRasidData();
+    if (!data.length) return;
+    downloadPdf(
+      <PaymentReportPDF data={data} summary={summary} agentInfo={agentInfo} programInfo={selectedProgram} filters={{ statusFilter: 'pending' }} selectionMode={selectionMode} selectedCount={data.length} />,
+      getPendingFileName(),
+      setPendingPdfLoading
+    );
+  }, [getPendingRasidData, summary, agentInfo, selectedProgram, selectionMode, getPendingFileName, downloadPdf]);
+
+  const handleDownloadPaid = useCallback(() => {
+    const data = getPaidRasidData();
+    if (!data.length) return;
+    downloadPdf(
+      <PaymentReportPDF data={data} summary={summary} agentInfo={agentInfo} programInfo={selectedProgram} filters={{ statusFilter: 'paid' }} selectionMode={selectionMode} selectedCount={data.length} />,
+      getPaidFileName(),
+      setPaidPdfLoading
+    );
+  }, [getPaidRasidData, summary, agentInfo, selectedProgram, selectionMode, getPaidFileName, downloadPdf]);
+
+  const handleMemberDownloadPending = useCallback((member) => {
+    const memberData = [{ ...member, marriages: (member.marriages || []).filter(x => x.status === 'pending') }].filter(m => m.marriages.length > 0);
+    if (!memberData.length) return;
+    const name = (member.displayName || 'Member').replace(/\s+/g, '_');
+    downloadPdf(
+      <PaymentReportPDF data={memberData} summary={{}} agentInfo={agentInfo} programInfo={selectedProgram} filters={{ statusFilter: 'pending' }} selectionMode="all" selectedCount={1} />,
+      `${name}_Pending_Rasid_${dayjs().format('DDMMYYYY')}.pdf`,
+      setMemberPendingPdfLoading
+    );
+  }, [agentInfo, selectedProgram, downloadPdf]);
+
+  const handleMemberDownloadPaid = useCallback((member) => {
+    const memberData = [{ ...member, marriages: (member.marriages || []).filter(x => x.status === 'paid') }].filter(m => m.marriages.length > 0);
+    if (!memberData.length) return;
+    const name = (member.displayName || 'Member').replace(/\s+/g, '_');
+    downloadPdf(
+      <PaymentReportPDF data={memberData} summary={{}} agentInfo={agentInfo} programInfo={selectedProgram} filters={{ statusFilter: 'paid' }} selectionMode="all" selectedCount={1} />,
+      `${name}_Paid_Rasid_${dayjs().format('DDMMYYYY')}.pdf`,
+      setMemberPaidPdfLoading
+    );
+  }, [agentInfo, selectedProgram, downloadPdf]);
+
   const hasActiveFilters =
     activeFilters.search || activeFilters.status || activeFilters.group;
 
@@ -652,12 +745,32 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
             Refresh
           </Button>
           <Button
+            icon={<DownloadOutlined />}
+            loading={pendingPdfLoading}
+            disabled={getPendingRasidData().length === 0}
+            style={{ borderColor: '#d46b08', color: '#d46b08' }}
+            onClick={handleDownloadPending}
+          >
+            बकाया रसीद ({getPendingRasidData().length})
+          </Button>
+
+          <Button
+            icon={<DownloadOutlined />}
+            loading={paidPdfLoading}
+            disabled={getPaidRasidData().length === 0}
+            style={{ borderColor: '#389e0d', color: '#389e0d' }}
+            onClick={handleDownloadPaid}
+          >
+            भुगतान रसीद ({getPaidRasidData().length})
+          </Button>
+
+          <Button
             type="primary"
             icon={<FilePdfOutlined />}
             onClick={() => setOpen(true)}
             disabled={filteredData.length === 0}
           >
-            Generate PDF
+            Full Report
           </Button>
         </Space>
       </div>
@@ -1041,18 +1154,39 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
         open={isDetailsModalVisible}
         onCancel={() => setIsDetailsModalVisible(false)}
         width={860}
-        footer={[
-          <Button key="close" onClick={() => setIsDetailsModalVisible(false)}>
-            Close
-          </Button>,
-          <Button
-            key="print"
-            icon={<PrinterOutlined />}
-            onClick={() => window.print()}
-          >
-            Print
-          </Button>,
-        ]}
+        footer={
+          selectedMember
+            ? [
+                <Button key="close" onClick={() => setIsDetailsModalVisible(false)}>
+                  Close
+                </Button>,
+                <Button
+                  key="pending-pdf"
+                  icon={<DownloadOutlined />}
+                  loading={memberPendingPdfLoading}
+                  disabled={(selectedMember.marriages || []).filter(x => x.status === 'pending').length === 0}
+                  style={{ borderColor: '#d46b08', color: '#d46b08' }}
+                  onClick={() => handleMemberDownloadPending(selectedMember)}
+                >
+                  बकाया रसीद ({(selectedMember.marriages || []).filter(x => x.status === 'pending').length})
+                </Button>,
+                <Button
+                  key="paid-pdf"
+                  icon={<DownloadOutlined />}
+                  loading={memberPaidPdfLoading}
+                  disabled={(selectedMember.marriages || []).filter(x => x.status === 'paid').length === 0}
+                  style={{ borderColor: '#389e0d', color: '#389e0d' }}
+                  onClick={() => handleMemberDownloadPaid(selectedMember)}
+                >
+                  भुगतान रसीद ({(selectedMember.marriages || []).filter(x => x.status === 'paid').length})
+                </Button>,
+              ]
+            : [
+                <Button key="close" onClick={() => setIsDetailsModalVisible(false)}>
+                  Close
+                </Button>,
+              ]
+        }
       >
         {selectedMember && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
