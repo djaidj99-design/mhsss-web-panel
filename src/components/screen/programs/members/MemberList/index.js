@@ -33,6 +33,7 @@ import { fetchSingleMemberMarriageReport } from '@/lib/helper';
 import MemberPaymentDetails from './MemberPaymentDetails';
 import MemberExportPDF from './MemberExportPDF';
 import JoinFeesMemberList from './JoinFeesCom/JoinFeesMemberList';
+import AgeSlabUpdateModal from './AgeSlabUpdateModal';
 
 dayjs.extend(isBetween);
 
@@ -129,6 +130,7 @@ const MemberList = () => {
     const [draftJoinFees,        setDraftJoinFees]        = useState('all');
 
     const [JoinFeesMemberListOpen, setJoinFeesMemberListOpen] = useState(false);
+    const [isAgeSlabOpen, setIsAgeSlabOpen] = useState(false);
     
     const [isCertDownloading, setIsCertDownloading] = useState(false);
 
@@ -563,6 +565,13 @@ const MemberList = () => {
                     <Tag color="blue" className="text-sm font-medium h-7 flex items-center m-0">
                         {filteredMembersData.length} members
                     </Tag>
+                    <Button
+                        onClick={() => setIsAgeSlabOpen(true)}
+                        disabled={!selectedProgram || allMembersData.length === 0}
+                        className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 hover:border-blue-400 font-medium"
+                    >
+                        आयु अनुसार किश्त अपडेट
+                    </Button>
                     <Button 
                         className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-red-50 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400 font-medium"
                     onClick={() => setJoinFeesMemberListOpen(true)}
@@ -780,6 +789,16 @@ const MemberList = () => {
                 filterSummary={filterSummary}
                 programName={selectedProgram?.name || ''}
             />
+            {isAgeSlabOpen && (
+                <AgeSlabUpdateModal
+                    open={isAgeSlabOpen}
+                    onClose={() => setIsAgeSlabOpen(false)}
+                    members={allMembersData}
+                    userId={user?.uid}
+                    programId={selectedProgram?.id}
+                    onSuccess={onGridReady}
+                />
+            )}
             {
                 JoinFeesMemberListOpen &&   <JoinFeesMemberList onSuccess={onGridReady} selectedProgram={selectedProgram} agentData={agentsList?.find(a => a.id === draftAgent)} membersData={filteredMembersData} open={JoinFeesMemberListOpen} onClose={() => setJoinFeesMemberListOpen(false)} />
             }

@@ -3,6 +3,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSelector } from 'react-redux';
 import { useAuth } from '@/lib/AuthProvider';
 import { deleteData, getData, updateData } from '@/lib/services/firebaseService';
+import { doc, getDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
+import { entryDue, entryPaid, statusFor } from '@/lib/paymentMath';
 import {
   Button, Space, Modal, App, Card, Row, Col, DatePicker, Select, Input,
   Tag, Tooltip, Divider, Typography, Alert, Drawer, Segmented, Badge, Table,
@@ -115,6 +118,8 @@ const TransactionsPage = () => {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [summary, setSummary] = useState({
     totalAmount: 0, totalTransactions: 0,
     cashCount: 0, onlineCount: 0, cashAmount: 0, onlineAmount: 0
@@ -185,15 +190,24 @@ const TransactionsPage = () => {
       await deleteData(`/users/${user.uid}/programs/${program.id}/transactions`, transaction.id);
       if (transaction.paymentPendingId) {
         try {
-          await updateData(
-            `/users/${user.uid}/programs/${program.id}/payment_pending`,
-            transaction.paymentPendingId,
-            {
-              status: 'pending', transactionId: null, paymentDate: null, paidAmount: null,
-              paymentMethod: null, onlineReference: null, updatedAt: dayjs().toISOString(),
-              lastDeletedTransactionId: transaction.id, lastDeletedAt: dayjs().toISOString(),
-            }
-          );
+          // Sirf ISI transaction ki rashi ghatao — baaki transactions ka paisa bana rahe
+          const pendRef = doc(db, `users/${user.uid}/programs/${program.id}/payment_pending`, transaction.paymentPendingId);
+          const pendSnap = await getDoc(pendRef);
+          if (!pendSnap.exists()) throw new Error('pending entry missing');
+          const entry = pendSnap.data();
+          const due = entryDue(entry, Number(transaction.originalClosingAmount) || 0);
+          const newPaid = Math.max(0, entryPaid(entry, due) - (Number(transaction.amount) || 0));
+          const newStatus = statusFor(due, newPaid);
+          await updateDoc(pendRef, {
+            status: newStatus,
+            paidAmount: newPaid,
+            transactionIds: arrayRemove(transaction.id),
+            ...(newStatus === 'pending'
+              ? { transactionId: null, paymentDate: null, paymentMethod: null, onlineReference: null }
+              : {}),
+            updatedAt: dayjs().toISOString(),
+            lastDeletedTransactionId: transaction.id, lastDeletedAt: dayjs().toISOString(),
+          });
           antdMessage.success('Transaction deleted and pending payment restored');
         } catch { antdMessage.warning('Transaction deleted but failed to update pending payment'); }
       } else {
@@ -238,6 +252,91 @@ const TransactionsPage = () => {
       okButtonProps: { loading: deleteLoading },
       onOk: () => handleDelete(transaction),
     });
+  };
+
+  // ── Bulk Delete ─────────────────────────────────────────────────────────
+  // Data / filter badalne par selection saaf (gaayab rows select na rahein)
+  useEffect(() => { setSelectedRowKeys([]); }, [transactions]);
+
+  const selectedTxns = useMemo(
+    () => transactions.filter(t => selectedRowKeys.includes(t.id)),
+    [transactions, selectedRowKeys]
+  );
+  const selectedAmount = useMemo(
+    () => selectedTxns.reduce((s, t) => s + (Number(t.amount) || 0), 0),
+    [selectedTxns]
+  );
+
+  const runBulkDelete = async () => {
+    const program = programRef.current;
+    if (!user || !program) { antdMessage.error('No program selected.'); return; }
+    setBulkDeleting(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch('/api/payments/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ programId: program.id, transactionIds: selectedRowKeys }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+      antdMessage.success(`${data.deleted} entries delete हुईं (₹${Number(data.deletedAmount || 0).toLocaleString('en-IN')}), ${data.entriesUpdated} पेंडिंग एंट्री वापस बकाया हुईं`);
+      setSelectedRowKeys([]);
+      fetchTransactions();
+    } catch (err) {
+      antdMessage.error('Bulk delete नहीं हुआ: ' + err.message);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const showBulkDeleteConfirm = () => {
+    if (!selectedTxns.length) return;
+    const payers = new Set(selectedTxns.map(t => t.payerId)).size;
+    modal.confirm({
+      title: `${selectedTxns.length} Transactions Delete करें?`,
+      icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+      width: 520,
+      content: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Alert type="warning" showIcon message="यह कार्रवाई वापस नहीं होगी। इन भुगतानों की राशि संबंधित सदस्यों के बकाया में वापस जुड़ जाएगी।" />
+          <div style={{ background: '#fafafa', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#8c8c8c' }}>Entries</span><b>{selectedTxns.length}</b></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#8c8c8c' }}>Payers</span><b>{payers}</b></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#8c8c8c' }}>कुल राशि</span><b style={{ color: '#cf1322' }}>₹{selectedAmount.toLocaleString('en-IN')}</b></div>
+          </div>
+          <div style={{ maxHeight: 180, overflowY: 'auto', fontSize: 12, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+            {selectedTxns.slice(0, 100).map(t => (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', borderBottom: '1px solid #f5f5f5' }}>
+                <span>{t.payerName || '-'} → {t.marriageMemberName || t.closingMemberName || '-'}</span>
+                <span>₹{Number(t.amount || 0).toLocaleString('en-IN')}</span>
+              </div>
+            ))}
+            {selectedTxns.length > 100 && <div style={{ padding: '4px 8px', color: '#8c8c8c' }}>… और {selectedTxns.length - 100}</div>}
+          </div>
+        </div>
+      ),
+      okText: `हाँ, ${selectedTxns.length} Delete करें`, okType: 'danger', cancelText: 'Cancel',
+      onOk: runBulkDelete,
+    });
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: setSelectedRowKeys,
+    preserveSelectedRowKeys: false,
+    columnWidth: 40,
+    fixed: true,
+    selections: [
+      Table.SELECTION_ALL,
+      Table.SELECTION_INVERT,
+      Table.SELECTION_NONE,
+      {
+        key: 'all-filtered',
+        text: 'सभी फ़िल्टर की गई entries चुनें',
+        onSelect: () => setSelectedRowKeys(transactions.map(t => t.id)),
+      },
+    ],
   };
 
   const handleView = (t) => { setSelectedTransaction(t); setViewModalVisible(true); };
@@ -581,8 +680,22 @@ const TransactionsPage = () => {
         styles={{ body: { padding: 0 } }}
       >
         {/* Table title row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 8px' }}>
-          <Text style={{ fontWeight: 700, fontSize: 13 }}>Transaction List</Text>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 8px', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Text style={{ fontWeight: 700, fontSize: 13 }}>Transaction List</Text>
+            {selectedRowKeys.length > 0 && (
+              <>
+                <Tag color="red" style={{ margin: 0 }}>
+                  {selectedRowKeys.length} चयनित · ₹{selectedAmount.toLocaleString('en-IN')}
+                </Tag>
+                <Button size="small" danger type="primary" icon={<DeleteOutlined />}
+                  loading={bulkDeleting} onClick={showBulkDeleteConfirm}>
+                  Bulk Delete ({selectedRowKeys.length})
+                </Button>
+                <Button size="small" onClick={() => setSelectedRowKeys([])}>Clear</Button>
+              </>
+            )}
+          </div>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {summary.totalTransactions} records &nbsp;·&nbsp;
             <span style={{ fontWeight: 700, color: '#16a34a' }}>
@@ -592,6 +705,7 @@ const TransactionsPage = () => {
         </div>
 
         <Table
+          rowSelection={rowSelection}
           columns={columns}
           dataSource={transactions}
           rowKey="id"
@@ -623,15 +737,15 @@ const TransactionsPage = () => {
           summary={() => (
             <Table.Summary fixed="bottom">
               <Table.Summary.Row style={{ background: '#f6f9ff' }}>
-                <Table.Summary.Cell index={0} colSpan={5} align="right">
+                <Table.Summary.Cell index={0} colSpan={6} align="right">
                   <Text strong style={{ fontSize: 12, color: '#595959' }}>Total (all records)</Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={5} align="right">
+                <Table.Summary.Cell index={6} align="right">
                   <Text strong style={{ color: '#16a34a', fontSize: 13 }}>
                     ₹{summary.totalAmount?.toLocaleString('en-IN')}
                   </Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={6} colSpan={3} />
+                <Table.Summary.Cell index={7} colSpan={3} />
               </Table.Summary.Row>
             </Table.Summary>
           )}

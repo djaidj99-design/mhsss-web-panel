@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { getData, createData } from '@/lib/services/firebaseService';
 import { useAuth } from '@/lib/AuthProvider';
 import { updateDoc, doc, getDocs, query, where, collection, writeBatch } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { 
   DollarOutlined, 
   UserOutlined, 
@@ -31,7 +31,7 @@ const { Option } = Select;
 const { TextArea } = Input;
 const { Search } = Input;
 
-const AddPaymentModal = () => {
+const AddPaymentModal = ({ onSuccess } = {}) => {
     const [isDrawerVisible, setIsDrawerVisible] = useState(false);
     const [marriages, setMarriages] = useState([]);
     const [filteredMarriages, setFilteredMarriages] = useState([]);
@@ -125,7 +125,7 @@ const AddPaymentModal = () => {
             const pendingQuery = query(
                 paymentPendingRef,
                 where('memberId', '==', memberId),
-                where('status', '==', 'pending'),
+                where('status', 'in', ['pending', 'partial']),
                 where('delete_flag', '==', false)
             );
             
@@ -274,98 +274,43 @@ const AddPaymentModal = () => {
         await processPayment(selectedMarriages, values);
     };
 
+    // Payment ab server API (/api/payments/process) se hota hai — wahi ek jagah
+    // jo pending entry, paidAmount aur transaction ko ek saath sahi likhti hai.
     const processPayment = async (marriageIds, values) => {
         const amount = Number(values.amount);
-        const marriageCount = marriageIds.length;
-        const individualAmount = marriageCount > 0 ? amount / marriageCount : amount;
 
         setLoading(true);
         try {
-            const transactions = [];
-            const timestamp = Date.now();
-            const batchId = Math.random().toString(36).substr(2, 6).toUpperCase();
-            
-            for (let i = 0; i < marriageIds.length; i++) {
-                const marriageId = marriageIds[i];
-                const marriage = marriages.find(m => m.id === marriageId);
-                const member = members.find(m => m.id === selectedMember);
-                
-                const transactionNumber = `TRX-${timestamp}-${batchId}-${(i + 1).toString().padStart(3, '0')}`;
-                
-                const transactionData = {
-                    amount:member.payAmount || individualAmount,
-                    paymentMethod: values.paymentMethod,
-                    paymentDate: dayjs(values.paymentDate).toISOString(),
-                    note: values.note || '',
-                    status: 'completed',
-                    createdAt: dayjs().toISOString(),
-                    updatedAt: dayjs().toISOString(),
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) throw new Error('Not authenticated');
+
+            const res = await fetch('/api/payments/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    type: 'single',
                     programId: selectedProgram.id,
                     programName: selectedProgram.name,
                     payerId: selectedMember,
-                    payerName: member?.displayName || '',
-                    payerFatherName: member?.fatherName || '',
-                    payerRegistrationNumber: member?.registrationNumber || '',
-                    payerPhone: member?.phone || '',
-                    payerAadhaarNo: member?.aadhaarNo || '',
-                    marriageId: marriageId,
-                    marriageMemberName: marriage?.displayName || '',
-                    marriageFatherName: marriage?.fatherName || '',
-                    marriageRegistrationNumber: marriage?.registrationNumber || '',
-                    marriageDate: marriage?.date || '',
-                    marriageClosingAt: marriage?.closingAt || '',
-                    marriageStatus: marriage?.status || '',
-                    paymentPendingId: `${marriageId}_${selectedMember}`,
-                    ...(values.paymentMethod === 'online' && {
-                        onlineReference: values.onlineReference,
-                        onlineVerified: false
-                    }),
-                    createdBy: user.uid,
-                    active_flag: true,
-                    delete_flag: false,
-                    transactionType: 'marriage_payment',
-                    transactionNumber: transactionNumber,
-                    batchId: `BATCH-${batchId}`,
-                    sequenceNumber: i + 1,
-                    search_keywords: createSearchIndex([
-                        member?.displayName,
-                        member?.fatherName,
-                        member?.registrationNumber,
-                        marriage?.displayName,
-                        marriage?.fatherName,
-                        marriage?.registrationNumber,
-                        selectedProgram.name,
-                        transactionNumber,
-                        member?.phone,
-                        values.onlineReference || ''
-                    ])
-                };
-
-                const transactionId = await createData(
-                    `/users/${user.uid}/programs/${selectedProgram.id}/transactions`,
-                    transactionData
-                );
-                
-                transactions.push({
-                    marriageId,
-                    payerId: selectedMember,
-                    transactionId,
-                    amount: individualAmount,
+                    selectedClosingIds: marriageIds,
+                    paymentMethod: values.paymentMethod,
                     paymentDate: dayjs(values.paymentDate).toISOString(),
-                    transactionNumber: transactionNumber
-                });
+                    note: values.note || '',
+                    onlineReference: values.onlineReference || '',
+                    customTotalAmount: amount > 0 ? amount : null,
+                }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                const rejectedNames = (result.rejected || []).map(r => r.name).join(', ');
+                throw new Error((result.error || 'Payment failed') + (rejectedNames ? ` — ${rejectedNames}` : ''));
             }
-            
-            const pendingEntriesToUpdate = transactions.filter(t => 
-                paymentPendingEntries.some(p => 
-                    p.closingMemberId === t.marriageId && p.memberId === t.payerId
-                )
-            );
-            
-            if (pendingEntriesToUpdate.length > 0) {
-                await updatePendingPaymentEntries(pendingEntriesToUpdate);
+            if (result.rejected?.length) {
+                message.warning(`${result.rejected.length} क्लोजिंग छोड़ी गईं (बकाया नहीं / पहले से पेड): ${result.rejected.map(r => r.name).join(', ')}`);
             }
-            
+            const transactions = Array.from({ length: result.processed || 0 });
+            onSuccess?.();
+
             setPaymentSummary({
                 count: transactions.length,
                 amount: amount,
@@ -389,7 +334,7 @@ const AddPaymentModal = () => {
             
         } catch (error) {
             console.error('Error saving payments:', error);
-            message.error('Failed to save payments. Please try again.');
+            message.error(error?.message || 'Failed to save payments. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -469,14 +414,14 @@ const AddPaymentModal = () => {
             );
         }
         
-        if (showPendingOnly && selectedMember) {
+        // Sirf wahi closings dikhen jinka is member par bakaya (pending/partial) hai.
+        // Bina entry wali closing par paisa lene se hi Paid/Pending mismatch hota tha.
+        if (selectedMember) {
             const pendingIds = paymentPendingEntries
                 .filter(p => p.memberId === selectedMember)
-                .map(p => p.closingMemberId);
+                .map(p => p.closingMemberId || p.marriageId);
             filtered = filtered.filter(m => pendingIds.includes(m.id));
         }
-        
-        filtered = filtered.filter(m => !alreadyPaidMarriages.includes(m.id));
         
         setFilteredMarriages(filtered);
     }, [marriageSearchText, showPendingOnly, marriages, paymentPendingEntries, selectedMember, alreadyPaidMarriages]);

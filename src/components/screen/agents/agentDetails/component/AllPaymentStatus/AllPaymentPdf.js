@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
 
 });
 
-const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
+const AllPaymentPdf = ({ rowData = [], agentInfo = {}, groupNames = [] }) => {
   const currentDate = dayjs().format('DD/MM/YYYY');
   const currentTime = dayjs().format('HH:mm');
   
@@ -366,6 +366,12 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
           <Text style={styles.infoLabel}>कुल रिकॉर्ड:</Text>
           <Text style={styles.infoValue}>{rowData.length}</Text>
         </View>
+        {groupNames.length > 0 && (
+          <View style={[styles.infoItem, { width: '100%', marginTop: 3 }]}>
+            <Text style={styles.infoLabel}>क्लोजिंग ग्रुप:</Text>
+            <Text style={styles.infoValue}>{groupNames.join(', ')}</Text>
+          </View>
+        )}
       </View>
     </>
   );
@@ -407,8 +413,9 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
     const hasBoth = row.status === 'both';
     
     return (
-      <View 
+      <View
         key={`row-${row.registrationNumber}-${row.programName}-${index}`}
+        wrap={false}
         style={[
           styles.tableRow,
           index % 2 === 1 && styles.tableRowAlt,
@@ -481,7 +488,7 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
               borderRadius: 2,
             }}>
             <Text style={[ {  fontSize: 6, color: '#fff', fontWeight: 'bold' }]}>
-              pending
+              Partial
             </Text>
                 </View>
           ) : hasPaid ? (
@@ -600,16 +607,29 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
     );
   }
 
-  // Calculate rows per page
-  const ROWS_PER_PAGE = 30;
-  const totalPages = Math.ceil(rowData.length / ROWS_PER_PAGE);
-  const pages = [];
+  // Rows per page — pehle page par header image hai isliye kam rows.
+  // Isse koi row do pages me nahi tootti.
+  const FIRST_PAGE_ROWS = 22;
+  const OTHER_PAGE_ROWS = 28;
+  const SUMMARY_ROWS = 8; // summary + notice lagbhag itni rows ki jagah leta hai
 
+  const chunks = [];
+  let cursor = 0;
+  while (cursor < rowData.length) {
+    const size = chunks.length === 0 ? FIRST_PAGE_ROWS : OTHER_PAGE_ROWS;
+    chunks.push({ start: cursor, rows: rowData.slice(cursor, cursor + size), cap: size });
+    cursor += size;
+  }
+  // Aakhri page par summary ki jagah nahi ho to summary alag page par
+  const lastChunk = chunks[chunks.length - 1];
+  const summaryOnOwnPage = lastChunk.rows.length > lastChunk.cap - SUMMARY_ROWS;
+  if (summaryOnOwnPage) chunks.push({ start: rowData.length, rows: [], cap: OTHER_PAGE_ROWS, summaryOnly: true });
+
+  const totalPages = chunks.length;
+  const pages = [];
   // Create pages
   for (let pageNum = 0; pageNum < totalPages; pageNum++) {
-    const startIdx = pageNum * ROWS_PER_PAGE;
-    const endIdx = Math.min(startIdx + ROWS_PER_PAGE, rowData.length);
-    const pageData = rowData.slice(startIdx, endIdx);
+    const { start: startIdx, rows: pageData, summaryOnly } = chunks[pageNum];
     const isLastPage = pageNum === totalPages - 1;
     const isFirstPage = pageNum === 0;
 
@@ -635,14 +655,16 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
             )}
             
             {/* Table header on every page */}
-            <View style={styles.table}>
-              {renderTableHeader()}
-              {pageData.map((row, idx) => renderTableRow(row, startIdx + idx))}
-            </View>
+            {!summaryOnly && (
+              <View style={styles.table}>
+                {renderTableHeader()}
+                {pageData.map((row, idx) => renderTableRow(row, startIdx + idx))}
+              </View>
+            )}
             
             {/* Summary on last page */}
             {isLastPage && (
-              <>
+              <View wrap={false}>
                 {renderSummaryRow('कुल सदस्य (अद्वितीय):', totalMembers.toString())}
                 {renderSummaryRow('कुल योजना (अद्वितीय):', totalPrograms.toString())}
                 {renderSummaryRow('भुगतान लेनदेन:', totalPaidCount.toString(), '#52c41a')}
@@ -655,7 +677,7 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {} }) => {
                     यह दान स्वेच्छिक रूप से दिया गया है और किसी भी कारणवश इसकी वापसी नहीं की जाएगी।
                   </Text>
                 </View>
-              </>
+              </View>
             )}
             
             <View style={styles.footer}>

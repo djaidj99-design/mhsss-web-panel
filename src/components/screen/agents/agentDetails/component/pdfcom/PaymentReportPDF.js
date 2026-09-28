@@ -464,18 +464,24 @@ const PaymentStatusPDF = ({
     return `₹${num.toLocaleString('hi-IN')}`;
   };
 
+  // statusFilter 'paid' => भुगतान रिपोर्ट, बाकी सब => बकाया रिपोर्ट (पहले जैसा)
+  const isPaidMode = filters?.statusFilter === 'paid';
+  const W = isPaidMode ? 'भुगतान' : 'बकाया';           // label word
+  const AMT_COLOR = isPaidMode ? '#237804' : '#cf1322';
+  const pickRow = (m) => (isPaidMode ? m.status === 'paid' : (m.status === 'pending' || m.status === 'partial'));
+  const rowAmount = (m) => parseFloat(isPaidMode ? (m.paidAmount ?? m.amount) : (m.remainingAmount ?? m.amount)) || 0;
   const calculateMemberStats = (member) => {
     if (!member.marriages || member.marriages.length === 0) {
       return { pendingMarriages: [], totalMarriages: 0, pendingCount: 0, pendingAmount: 0, totalAmount: 0 };
     }
     const totalMarriages = member.marriages.length;
-    const pendingMarriages = member.marriages.filter(m => m.status === 'pending');
+    const pendingMarriages = member.marriages.filter(pickRow);
     const totalAmount = member.marriages.reduce((sum, m) => sum + (parseFloat(m.amount) || 0), 0);
     return {
       pendingMarriages,
       totalMarriages,
       pendingCount: pendingMarriages.length,
-      pendingAmount: pendingMarriages.reduce((sum, m) => sum + (parseFloat(m.amount) || 0), 0),
+      pendingAmount: pendingMarriages.reduce((sum, m) => sum + rowAmount(m), 0),
       totalAmount
     };
   };
@@ -524,7 +530,7 @@ const PaymentStatusPDF = ({
           <Text style={styles.address}>{TrsutData.address}</Text>
           <Text style={styles.phoneNumbers}>{TrsutData.contact}</Text>
           <View style={styles.schemeBox}>
-            <Text style={styles.schemeText}>बकाया भुगतान रिपोर्ट</Text>
+            <Text style={styles.schemeText}>{isPaidMode ? 'प्राप्त भुगतान रिपोर्ट' : 'बकाया भुगतान रिपोर्ट'}</Text>
           </View>
         </View>
         <Image src={TrsutData.logo} style={[styles.logoImage, { width: 100 }]} /> */}
@@ -587,11 +593,11 @@ const PaymentStatusPDF = ({
             <Text style={styles.memberStatValue}>{stats.totalMarriages}</Text>
           </View>
           <View style={styles.memberStatItem}>
-            <Text style={styles.memberStatLabel}>बकाया समापन</Text>
+            <Text style={styles.memberStatLabel}>{W} समापन</Text>
             <Text style={styles.memberStatValue}>{stats.pendingCount}</Text>
           </View>
           <View style={styles.memberStatItem}>
-            <Text style={styles.memberStatLabel}>बकाया राशि</Text>
+            <Text style={styles.memberStatLabel}>{W} राशि</Text>
             <Text style={styles.memberStatValue}>{formatCurrency(stats.pendingAmount)}</Text>
           </View>
         </View>
@@ -659,8 +665,8 @@ const maskPhone = (phone) => {
               <Text style={[styles.textCenter, styles.dataText]}>{marriage.closingVillage || '-'}</Text>
             </View>
             <View style={[styles.tableCell, styles.colAmount, { borderRightWidth: 0 }]}>
-              <Text style={[styles.textRight, styles.dataBoldText, { color: '#cf1322' }]}>
-                {formatCurrency(marriage.amount)}
+              <Text style={[styles.textRight, styles.dataBoldText, { color: AMT_COLOR }]}>
+                {formatCurrency(rowAmount(marriage))}
               </Text>
             </View>
           </View>
@@ -691,7 +697,7 @@ const maskPhone = (phone) => {
           <View style={[styles.totalCell, { width: '55%', paddingLeft: 10 }]}>
             <Text style={{ fontSize: 9, color: '#fff', fontWeight: 'bold' }}>
               {isLastPage && memberStats
-                ? `कुल बकाया (${memberStats.pendingCount} समापन)`
+                ? `कुल ${W} (${memberStats.pendingCount} समापन)`
                 : `इस पृष्ठ कुल (${marriages.length} रिकॉर्ड)`}
             </Text>
           </View>
@@ -730,10 +736,10 @@ const maskPhone = (phone) => {
               <PdfHeaderCom/>
               <View style={styles.noDataBox}>
                 <Text style={[styles.noDataText, { fontSize: 13, marginBottom: 6, fontWeight: 'bold' }]}>
-                  कोई बकाया भुगतान नहीं है
+                  {isPaidMode ? 'कोई प्राप्त भुगतान नहीं मिला' : 'कोई बकाया भुगतान नहीं है'}
                 </Text>
                 <Text style={styles.noDataText}>
-                  इस एजेंट के लिए कोई बकाया भुगतान रिकॉर्ड नहीं मिला
+                  {isPaidMode ? 'चयनित सदस्यों का कोई पेड समापन नहीं है' : 'इस एजेंट के लिए कोई बकाया भुगतान रिकॉर्ड नहीं मिला'}
                 </Text>
               </View>
 
@@ -793,12 +799,12 @@ const maskPhone = (phone) => {
 
               {!isFirstPage && (
                 <Text style={[styles.tableSectionTitle, { marginBottom: 4 }]}>
-                  {member.displayName} — बकाया समापन (जारी) — पृष्ठ {chunkIdx + 1}/{totalPagesForMember}
+                  {member.displayName} — {W} समापन (जारी) — पृष्ठ {chunkIdx + 1}/{totalPagesForMember}
                 </Text>
               )}
 
               <Text style={styles.tableSectionTitle}>
-                बकाया समापन भुगतान विवरण — पृष्ठ {chunkIdx + 1}/{totalPagesForMember}
+                {W} समापन भुगतान विवरण — पृष्ठ {chunkIdx + 1}/{totalPagesForMember}
               </Text>
 
               {renderMarriageTable(chunk, startIndex, true, stats, isLastPage)}
@@ -860,10 +866,8 @@ const maskPhone = (phone) => {
             {[
               ['कुल सदस्य:', membersWithPending.length, '#1a0f5e'],
               ['कुल समापन:', overallTotals.totalAllMarriages, '#1a0f5e'],
-              ['भुगतान समापन:', overallTotals.paidMarriages, '#52c41a'],
-              ['बकाया समापन:', overallTotals.totalPendingMarriages, '#f5222d'],
-              ['भुगतान राशि:', formatCurrency(overallTotals.paidAmount), '#52c41a'],
-              ['बकाया राशि:', formatCurrency(overallTotals.totalPendingAmount), '#f5222d'],
+              [`${W} समापन:`, overallTotals.totalPendingMarriages, AMT_COLOR],
+              [`${W} राशि:`, formatCurrency(overallTotals.totalPendingAmount), AMT_COLOR],
             ].map(([label, value, color]) => (
               <View key={label} style={styles.summaryInfoRow}>
                 <Text style={styles.summaryInfoLabel}>{label}</Text>
@@ -874,7 +878,7 @@ const maskPhone = (phone) => {
 
           <View style={styles.grandTotalBox}>
             <Text style={[styles.grandTotalText, { marginBottom: 4 }]}>
-              रिपोर्ट कुल बकाया राशि
+              {`रिपोर्ट कुल ${W} राशि`}
             </Text>
             <Text style={[styles.grandTotalText, { fontSize: 18 }]}>
               {formatCurrency(overallTotals.totalPendingAmount)}

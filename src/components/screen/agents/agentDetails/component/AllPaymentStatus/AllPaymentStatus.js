@@ -24,6 +24,7 @@ import { DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { getData } from '@/lib/services/firebaseService';
 import { useDispatch, useSelector } from 'react-redux';
+import { entryDue, entryPaid } from '@/lib/paymentMath';
 
 ModuleRegistry.registerModules([
   NumberEditorModule,
@@ -124,6 +125,45 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
   const [open, setOpen] = useState(false);
   const gridRef = useRef();
 
+  // ── Closing Group filter ─────────────────────────────────────────────────
+  // groups: [{ key: `${programId}|${groupId}`, programId, groupId, name, programName }]
+  const [closingGroups, setClosingGroups] = useState([]);
+  const [selectedGroupKeys, setSelectedGroupKeys] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user?.uid || selectedProgramIds.length === 0) { setClosingGroups([]); setSelectedGroupKeys([]); return; }
+    let cancelled = false;
+    (async () => {
+      setGroupsLoading(true);
+      try {
+        const lists = await Promise.all(selectedProgramIds.map(async (pid) => {
+          const snap = await getDocs(collection(db, `users/${user.uid}/programs/${pid}/closing_groups`));
+          const programName = programList.find((p) => p.id === pid)?.name || '';
+          return snap.docs.map((d) => ({
+            key: `${pid}|${d.id}`,
+            programId: pid,
+            groupId: d.id,
+            name: d.data().name || d.id,
+            memberCount: d.data().memberCount || (d.data().members || []).length || 0,
+            programName,
+          }));
+        }));
+        if (cancelled) return;
+        const all = lists.flat();
+        setClosingGroups(all);
+        // jo group ab list me nahi (program hata diya) use selection se hatao
+        setSelectedGroupKeys((prev) => prev.filter((k) => all.some((g) => g.key === k)));
+      } catch (e) {
+        console.error('Error fetching closing groups:', e);
+      } finally {
+        if (!cancelled) setGroupsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProgramIds, user?.uid]);
+
   // Set default program once programList loads
   useEffect(() => {
     if (programList?.length > 0 && selectedProgramIds.length === 0) {
@@ -134,14 +174,15 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
   // Fetch when selection changes
   useEffect(() => {
     if (user?.uid && selectedProgramIds.length > 0) {
-      fetchPaymentData(selectedProgramIds);
+      fetchPaymentData(selectedProgramIds, selectedGroupKeys);
     } else {
       setRowData([]);
     }
-  }, [selectedProgramIds, user?.uid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProgramIds, selectedGroupKeys, user?.uid]);
 
   // ── Core fetch (only selected programs) ──────────────────────────────────
-  const fetchPaymentData = async (programIds) => {
+  const fetchPaymentData = async (programIds, groupKeys = []) => {
     setIsLoading(true);
     try {
       const uid = user.uid;
@@ -169,9 +210,17 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
           ]);
 
           // Build a quick lookup: memberId → payments[]
+          // Is program ke chune hue closing groups (khaali = sab)
+          const groupIdsForProgram = new Set(
+            groupKeys.filter((k) => k.startsWith(`${programId}|`)).map((k) => k.split('|')[1])
+          );
+          const programHasGroupFilter = groupKeys.length > 0;
+
           const paymentsByMember = {};
           paymentsSnap.forEach((pDoc) => {
             const p = pDoc.data();
+            if (p.delete_flag === true) return;
+            if (programHasGroupFilter && !groupIdsForProgram.has(p.closingGroupId || '')) return;
             if (!paymentsByMember[p.memberId]) paymentsByMember[p.memberId] = [];
             paymentsByMember[p.memberId].push({ id: pDoc.id, ...p });
           });
@@ -182,11 +231,16 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
             if (!memberPayments || memberPayments.length === 0) continue;
 
             // Aggregate per marriage
+            // Partial bhi sahi: jama hissa Paid me, baaki Pending me
             let totalPaid = 0, totalPending = 0, paidCount = 0, pendingCount = 0;
+            const fallbackDue = Number(memberDoc.payAmount) || 0;
             memberPayments.forEach((p) => {
-              const amt = Number(p.payAmount || 0);
-              if (p.status === 'paid') { totalPaid += amt; paidCount++; }
-              else { totalPending += amt; pendingCount++; }
+              const due = entryDue(p, fallbackDue);
+              const paid = entryPaid(p, fallbackDue);
+              const rem = Math.max(0, due - paid);
+              totalPaid += paid;
+              totalPending += rem;
+              if (rem > 0) pendingCount++; else paidCount++;
             });
 
             const key = `${memberDoc.registrationNumber}-${programId}`;
@@ -286,6 +340,32 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
             ))}
           </Select>
 
+          {/* Closing group filter (chune hue programs ke groups) */}
+          <Select
+            mode="multiple"
+            placeholder="सभी क्लोजिंग ग्रुप"
+            style={{ minWidth: 220, maxWidth: 360 }}
+            value={selectedGroupKeys}
+            onChange={setSelectedGroupKeys}
+            loading={groupsLoading}
+            disabled={selectedProgramIds.length === 0}
+            maxTagCount={1}
+            allowClear
+            size="large"
+            showSearch
+            optionFilterProp="label"
+            notFoundContent={groupsLoading ? 'Loading…' : 'कोई क्लोजिंग ग्रुप नहीं'}
+            options={
+              selectedProgramIds.length > 1
+                ? selectedProgramIds.map((pid) => ({
+                    label: programList.find((p) => p.id === pid)?.name || pid,
+                    options: closingGroups
+                      .filter((g) => g.programId === pid)
+                      .map((g) => ({ value: g.key, label: `${g.name} (${g.memberCount})` })),
+                  })).filter((grp) => grp.options.length > 0)
+                : closingGroups.map((g) => ({ value: g.key, label: `${g.name} (${g.memberCount})` }))
+            }
+          />
           <button
             onClick={() => gridRef.current?.api?.exportDataAsCsv({ fileName: 'payment_status.csv' })}
             style={{
@@ -374,6 +454,7 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
               document={
                 <AllPaymentPdf
                   rowData={rowData}
+                  groupNames={closingGroups.filter((g) => selectedGroupKeys.includes(g.key)).map((g) => g.name)}
                   agentInfo={{
                     ...agentInfo,
                     uid: user?.uid,
@@ -396,6 +477,7 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
         <PDFViewer style={{ width: '100%', height: '100vh', border: 'none' }}>
           <AllPaymentPdf
             rowData={rowData}
+            groupNames={closingGroups.filter((g) => selectedGroupKeys.includes(g.key)).map((g) => g.name)}
             agentInfo={{
               ...agentInfo,
               uid: user?.uid,

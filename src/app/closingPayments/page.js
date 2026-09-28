@@ -19,6 +19,15 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/AuthProvider';
 import { useSelector } from 'react-redux';
 import { getData } from '@/lib/services/firebaseService';
+import { entryRemaining, isOpenEntry } from '@/lib/paymentMath';
+import ReconcileModal from '@/components/common/payments/ReconcileModal';
+import { useClosingFilter } from '@/components/common/payments/ClosingFilterBar';
+
+// क्लोजिंग एंट्री के search / date getters (filter bar के लिए)
+const closingDateOf = (c) => c.marriageDate || c.closing_date || c.closingAt || '';
+const closingSearchOf = (c) => [c.closingMemberName, c.closingMemberReg, c.closingMemberFather, c.paymentFor, c.closingRegNo, closingDateOf(c)].join(' ');
+const marriageDateOf = (m) => m.marriage_date || m.closing_date || m.closingAt || '';
+const marriageSearchOf = (m) => [m.displayName, m.fatherName, m.registrationNumber, m.village, marriageDateOf(m)].join(' ');
 
 import { AgGridReact } from 'ag-grid-react';
 import {
@@ -113,10 +122,18 @@ function ClosingSelectorModal({ open, onClose, member, pendingClosings, selected
     );
   };
 
-  const selectAll = () => setLocalSelected(pendingClosings.map(c => c.id));
+  const { filtered: visibleClosings, bar: filterBar } = useClosingFilter(pendingClosings, {
+    getSearchText: closingSearchOf,
+    getDate: closingDateOf,
+  });
+
+  // Filter lage hone par sirf dikh rahi closings select hon
+  const selectAll = () => setLocalSelected(prev => [...new Set([...prev, ...visibleClosings.map(c => c.id)])]);
   const clearAll = () => setLocalSelected([]);
 
-  const totalAmount = localSelected.length * (member?.payAmount || 200);
+  const totalAmount = pendingClosings
+    .filter(c => localSelected.includes(c.id))
+    .reduce((s, c) => s + entryRemaining(c, Number(member?.payAmount) || 0), 0);
 
   return (
     <Modal
@@ -150,9 +167,10 @@ function ClosingSelectorModal({ open, onClose, member, pendingClosings, selected
           </div>
         </div>
       }
-      width={480}
+      width={560}
     >
       <div className="space-y-3">
+        {filterBar}
         {/* Quick actions */}
         <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
           <span className="text-xs text-gray-500">{pendingClosings.length} pending closings</span>
@@ -173,7 +191,7 @@ function ClosingSelectorModal({ open, onClose, member, pendingClosings, selected
           {[1, 2, 3, 5, 10].filter(n => n <= pendingClosings.length).map(n => (
             <Button key={n} size="small" type="default"
               className="text-xs h-6 px-2 rounded-full border-indigo-200 text-indigo-600"
-              onClick={() => setLocalSelected(pendingClosings.slice(0, n).map(c => c.id))}>
+              onClick={() => setLocalSelected(visibleClosings.slice(0, n).map(c => c.id))}>
               First {n}
             </Button>
           ))}
@@ -181,9 +199,9 @@ function ClosingSelectorModal({ open, onClose, member, pendingClosings, selected
 
         {/* Closing list */}
         <div className="border border-gray-200 rounded-xl overflow-hidden" style={{ maxHeight: 320, overflowY: 'auto' }}>
-          {pendingClosings.length === 0
-            ? <Empty description="No pending closings" className="py-8" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            : pendingClosings.map((closing, i) => {
+          {visibleClosings.length === 0
+            ? <Empty description={pendingClosings.length ? 'फ़िल्टर से कोई क्लोजिंग नहीं मिली' : 'No pending closings'} className="py-8" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            : visibleClosings.map((closing, i) => {
                 const isSelected = localSelected.includes(closing.id);
                 const idx = localSelected.indexOf(closing.id);
                 return (
@@ -261,12 +279,18 @@ function MemberClosingsDrawer({ open, onClose, member, programId, user }) {
     })();
   }, [open, member, programId, user]);
 
-  const pendingCount = closings.filter(c => c.status === 'pending').length;
+  const pendingCount = closings.filter(c => isOpenEntry(c)).length;
   const paidCount = closings.filter(c => c.status === 'paid').length;
+
+  const { filtered: visibleClosings, bar: filterBar } = useClosingFilter(closings, {
+    getSearchText: closingSearchOf,
+    getDate: closingDateOf,
+    getStatus: (c) => c.status || 'pending',
+  });
 
   return (
     <Drawer
-      open={open} onClose={onClose} width={520}
+      open={open} onClose={onClose} width={600}
       title={
         <div className="flex items-center gap-3">
           {member?.photoURL
@@ -302,7 +326,9 @@ function MemberClosingsDrawer({ open, onClose, member, programId, user }) {
           ? <Empty description="No closing entries found" />
           : (
             <div className="space-y-3">
-              {closings.map((c, i) => {
+              <div className="sticky top-0 z-10 bg-white pb-1">{filterBar}</div>
+              {visibleClosings.length === 0 && <Empty description="फ़िल्टर से कोई क्लोजिंग नहीं मिली" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+              {visibleClosings.map((c, i) => {
                 const isPaid = c.status === 'paid';
                 const isPartial = c.status === 'partial';
                 const payAmount = c.payAmount || member?.payAmount || 200;
@@ -379,7 +405,7 @@ function BulkPaymentDrawer({ open, onClose, selectedRows, programId, programName
         }
 
         // JS mein filter: only pending, not deleted
-        const pending = allEntries.filter(p => p.delete_flag !== true && (!p.status || p.status === 'pending'));
+        const pending = allEntries.filter(isOpenEntry);
 
         // Enrich with closing member info
         const closingMemberIds = [...new Set(pending.map(p => p.closingMemberId || p.marriageId).filter(Boolean))];
@@ -448,7 +474,7 @@ function BulkPaymentDrawer({ open, onClose, selectedRows, programId, programName
         const selectedIds = memberSelectedClosings[member.id] || [];
         const pendingClosings = memberPendingClosings[member.id] || [];
         const selectedClosings = pendingClosings.filter(c => selectedIds.includes(c.id));
-        const amountToPay = selectedClosings.length * payAmount;
+        const amountToPay = selectedClosings.reduce((s, c) => s + entryRemaining(c, payAmount), 0);
 
         return {
           member,
@@ -827,11 +853,14 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
     let remainingAmount = totalAmount;
     for (const closing of sortedClosings) {
       if (remainingAmount <= 0) break;
-      const amountForThisClosing = Math.min(remainingAmount, perClosingAmount);
+      // Har closing ka apna bakaya (entry.payAmount - paidAmount)
+      const dueHere = dueByClosing[closing.id] ?? perClosingAmount;
+      const amountForThisClosing = Math.min(remainingAmount, dueHere);
       distribution.push({
         closingId: closing.id,
         amount: amountForThisClosing,
-        isFullPayment: amountForThisClosing >= perClosingAmount,
+        dueAmount: dueHere,
+        isFullPayment: amountForThisClosing >= dueHere,
         closingData: closing,
         closingName: closing.displayName,
         closingReg: closing.registrationNumber,
@@ -849,16 +878,29 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
 
   const perClosingAmountValue = Form.useWatch('amount', form) || 200;
 
+  // closingId -> is member ka bakaya (sirf pending / partial entries)
+  const dueByClosing = useMemo(() => {
+    const map = {};
+    for (const p of paymentPendingEntries) {
+      if (!isOpenEntry(p)) continue;
+      const cid = p.closingMemberId || p.marriageId;
+      if (!cid) continue;
+      const rem = entryRemaining(p, perClosingAmountValue);
+      if (rem > 0) map[cid] = rem;
+    }
+    return map;
+  }, [paymentPendingEntries, perClosingAmountValue]);
+
   useEffect(() => {
     if (selectedMarriages.length > 0 && selectedMember && perClosingAmountValue > 0) {
-      const totalAmount = customTotalAmount || (selectedMarriages.length * perClosingAmountValue);
+      const totalAmount = customTotalAmount || selectedMarriages.reduce((s, id) => s + (dueByClosing[id] ?? perClosingAmountValue), 0);
       const selectedClosingsData = marriages.filter(m => selectedMarriages.includes(m.id));
       const preview = distributeWaterfall(totalAmount, selectedClosingsData, perClosingAmountValue);
       setWaterfallPreview(preview);
     } else {
       setWaterfallPreview(null);
     }
-  }, [selectedMarriages, selectedMember, perClosingAmountValue, customTotalAmount, marriages]);
+  }, [selectedMarriages, selectedMember, perClosingAmountValue, customTotalAmount, marriages, dueByClosing]);
 
   const fetchClosings = async (prog) => {
     setFetchingMarriages(true);
@@ -942,13 +984,13 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
         m.registrationNumber?.toLowerCase().includes(s)
       );
     }
-    if (showPendingOnly && selectedMember) {
-      const pendingIds = paymentPendingEntries.map(p => p.closingMemberId || p.marriageId);
-      filtered = filtered.filter(m => pendingIds.includes(m.id));
+    // Sirf wahi closings jinka is member par bakaya hai (bina entry wali closing
+    // par paisa lene se hi Paid/Pending mismatch hota tha)
+    if (selectedMember) {
+      filtered = filtered.filter(m => dueByClosing[m.id] > 0);
     }
-    filtered = filtered.filter(m => !alreadyPaidMarriages.includes(m.id));
     setFilteredMarriages(filtered);
-  }, [marriageSearchText, showPendingOnly, marriages, paymentPendingEntries, selectedMember, alreadyPaidMarriages]);
+  }, [marriageSearchText, showPendingOnly, marriages, paymentPendingEntries, selectedMember, alreadyPaidMarriages, dueByClosing]);
 
   const handleProgramSelect = async (value) => {
     const prog = programList.find(p => p.id === value);
@@ -969,16 +1011,19 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
   };
 
   const handleSelectAllPending = () => {
-    const pendingIds = paymentPendingEntries
-      .map(p => p.closingMemberId || p.marriageId)
-      .filter(id => !alreadyPaidMarriages.includes(id));
+    const pendingIds = Object.keys(dueByClosing);
     const available = marriages.filter(m => pendingIds.includes(m.id)).map(m => m.id);
     if (!available.length) { message.info('No pending payments available'); return; }
     setSelectedMarriages(available);
     setCustomTotalAmount(null);
   };
 
-  const totalSelectedAmount = selectedMarriages.length * perClosingAmountValue;
+  const { filtered: visibleMarriages, bar: marriageFilterBar } = useClosingFilter(filteredMarriages, {
+    getSearchText: marriageSearchOf,
+    getDate: marriageDateOf,
+  });
+
+  const totalSelectedAmount = selectedMarriages.reduce((s, id) => s + (dueByClosing[id] ?? perClosingAmountValue), 0);
   const effectiveTotalAmount = customTotalAmount || totalSelectedAmount;
 
   const processPayment = async (values) => {
@@ -1188,13 +1233,7 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
               ))}
             </Row>
 
-            <div className="flex gap-2">
-              <Search placeholder="Search closing..." value={marriageSearchText}
-                onChange={e => setMarriageSearchText(e.target.value)} allowClear size="small" className="flex-1" />
-              <Button size="small" type={showPendingOnly ? 'primary' : 'default'}
-                icon={<FilterOutlined />} onClick={() => setShowPendingOnly(v => !v)}
-                className={showPendingOnly ? 'bg-orange-500 border-orange-500' : ''} />
-            </div>
+            {marriageFilterBar}
 
             {pendingCount > 0 && (
               <div className="flex items-center justify-between bg-orange-50 px-3 py-2 rounded-lg border border-orange-100">
@@ -1215,7 +1254,7 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
                     <InputNumber
                       placeholder="Auto" value={customTotalAmount} onChange={setCustomTotalAmount}
                       size="small" prefix="₹" className="w-28" min={0}
-                      max={selectedMarriages.length * perClosingAmountValue}
+                      max={totalSelectedAmount}
                     />
                     <Button size="small" type="link" onClick={() => setCustomTotalAmount(null)} className="text-blue-500 p-0 h-auto">Reset</Button>
                   </div>
@@ -1240,7 +1279,7 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
                           ? <Tag color="green" className="text-xs m-0 px-1">Full</Tag>
                           : <Tag color="orange" className="text-xs m-0 px-1">Partial</Tag>}
                       </div>
-                      <div className="font-mono font-medium">{fmt(dist.amount)} / {fmt(perClosingAmountValue)}</div>
+                      <div className="font-mono font-medium">{fmt(dist.amount)} / {fmt(dist.dueAmount ?? perClosingAmountValue)}</div>
                     </div>
                   ))}
                 </div>
@@ -1250,9 +1289,9 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
             <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50" style={{ maxHeight: 320, overflowY: 'auto' }}>
               {fetchingMarriages
                 ? <div className="flex justify-center py-8"><Spin /></div>
-                : filteredMarriages.length === 0
-                  ? <Empty description="No closings available" className="py-8" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                  : filteredMarriages.map(m => {
+                : visibleMarriages.length === 0
+                  ? <Empty description={filteredMarriages.length ? 'फ़िल्टर से कोई क्लोजिंग नहीं मिली' : 'No closings available'} className="py-8" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  : visibleMarriages.map(m => {
                       const isPending = paymentPendingEntries.some(p =>
                         (p.closingMemberId === m.id || p.marriageId === m.id) && p.memberId === selectedMember
                       );
@@ -1411,7 +1450,7 @@ function AddPaymentDrawer({ open, onClose, programId, programName, programList, 
               <div className="border-t pt-2 mt-2 flex justify-between">
                 <span className="text-sm font-semibold">Total to Pay</span>
                 <span className="text-base font-black text-green-600">
-                  {fmt(customTotalAmount || (selectedMarriages.length * perClosingAmountValue))}
+                  {fmt(customTotalAmount || totalSelectedAmount)}
                 </span>
               </div>
             </div>
@@ -1439,6 +1478,7 @@ export default function PaymentPage() {
   const [selectedRows, setSelectedRows] = useState([]);
   const [showBulk, setShowBulk] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [showReconcile, setShowReconcile] = useState(false);
   const [closingDrawerMember, setClosingDrawerMember] = useState(null);
 
   const gridRef = useRef();
@@ -1613,6 +1653,23 @@ export default function PaymentPage() {
             <h1 className="text-lg font-bold text-gray-900 m-0">Payment Management</h1>
             {selectedProgram && <p className="text-xs text-gray-400 m-0">{selectedProgram.name}</p>}
           </div>
+          {selectedProgram && (
+            <Tooltip title="जमा राशि (Transactions) और पेंडिंग एंट्री का मिलान करें">
+              <Button icon={<CheckCircleOutlined />} onClick={() => setShowReconcile(true)}
+                className="border-blue-300 text-blue-600 bg-blue-50">
+                भुगतान मिलान
+              </Button>
+            </Tooltip>
+          )}
+          {showReconcile && (
+            <ReconcileModal
+              open={showReconcile}
+              onClose={() => setShowReconcile(false)}
+              programId={selectedProgram?.id}
+              programName={selectedProgram?.name}
+              onFixed={fetchData}
+            />
+          )}
         </div>
 
         {selectedProgram && (

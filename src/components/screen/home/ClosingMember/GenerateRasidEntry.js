@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
     App, Drawer, Select, Space, Divider, Typography, Button, Spin, Tag,
     Badge, Progress, Segmented, Switch, Alert,
@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons'
 import { useSelector } from 'react-redux'
 import { getData } from '@/lib/services/firebaseService'
+import { parseAnyDate, formatShortDate } from '@/lib/dateUtils'
 import {
     collection, addDoc, getDocs, updateDoc, deleteDoc,
     doc, onSnapshot, query, orderBy, where, writeBatch
@@ -127,14 +128,21 @@ const avatarColor = (i) => ['teal', 'amber', 'gray'][i % 3]
 // Firestore hard-caps a batch at 500 ops; stay under it with headroom.
 const BATCH_LIMIT = 400
 
-const parseDDMMYYYY = (dateStr) => {
-    if (!dateStr || typeof dateStr !== 'string') return null
-    const parts = dateStr.split('-')
-    if (parts.length !== 3) return null
-    const [day, month, year] = parts.map(Number)
-    if (!day || !month || !year) return null
-    return new Date(year, month - 1, day)
-}
+// Pairs evaluated before handing control back to the browser, so a big run
+// (50 closing × 600 members = 30,000 pairs) doesn't freeze the tab.
+const YIELD_EVERY = 500
+const yieldToUI = () => new Promise(resolve => setTimeout(resolve, 0))
+
+/**
+ * Dates in this collection are not stored consistently — "25-04-2025",
+ * "2025-04-25", a Firestore Timestamp on createdAt, etc. parseAnyDate handles
+ * all of them and returns null when the value isn't a date, which is exactly
+ * the contract the eligibility checks below expect.
+ */
+const parseDDMMYYYY = (value) => parseAnyDate(value)
+
+/** Strip the time so two dates on the same day compare as equal. */
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 
 /* ─── Component ──────────────────────────────────────────────────────── */
 const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMemberList }) => {
@@ -158,6 +166,14 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
     /* agent filter for the payer list — null means "all agents" */
     const agentsList = useSelector((state) => state.data.agentsList) || []
     const [agentFilter, setAgentFilter] = useState(null)
+
+    /* Eligibility rules — both ON by default (existing behaviour).
+     * Turn one off when the data says otherwise, e.g. a member whose dateJoin
+     * was recorded wrong should still get an entry for an older closing. */
+    const [skipJoinedAfter, setSkipJoinedAfter] = useState(true)
+    const [skipAlreadyClosed, setSkipAlreadyClosed] = useState(true)
+
+    const evalOpts = { skipJoinedAfter, skipAlreadyClosed }
 
     /* mode + delete options + shared progress */
     const [mode, setMode] = useState('generate')        // 'generate' | 'delete' | 'cleanup'
@@ -276,8 +292,12 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
      * instead of a Firestore read per pair, so generating N entries costs N
      * writes and ZERO extra reads.
      */
-    const evaluatePair = (closingMember, payingMember, existsSet) => {
+    const evaluatePair = (closingMember, payingMember, existsSet, opts = {}) => {
         const paymentId = `${closingMember.id}_${payingMember.id}`
+        const {
+            skipJoinedAfter = true,
+            skipAlreadyClosed = true,
+        } = opts
 
         if (closingMember.id === payingMember.id)
             return { skip: 'same_member', id: paymentId }
@@ -287,18 +307,37 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
             return { skip: 'exists', id: paymentId }
 
         const marriageDate = closingMember.marriage_date || closingMember.closing_date
-        const joinDate = payingMember.dateJoin || payingMember.createdAt
 
-        if (joinDate && marriageDate) {
+        // Only the real join date counts here — NOT createdAt.
+        // createdAt is when the row was typed into the system, which for older
+        // members is long after they actually joined. Using it as a fallback
+        // made genuinely eligible members look like they "joined after the
+        // marriage" and silently skipped them.
+        const joinDate = payingMember.dateJoin
+
+        if (skipJoinedAfter && joinDate && marriageDate) {
             const j = parseDDMMYYYY(joinDate)
             const m = parseDDMMYYYY(marriageDate)
-            if (j && m && j > m) return { skip: 'joined_after_marriage', id: paymentId }
+            // Compare by DAY. A timestamp with a time component would otherwise
+            // count as "after" even when it is the very same date.
+            if (j && m && startOfDay(j) > startOfDay(m)) {
+                return {
+                    skip: 'joined_after_marriage',
+                    id: paymentId,
+                    detail: `${payingMember.displayName || payingMember.registrationNumber || 'Member'} joined ${formatShortDate(joinDate)} · ${closingMember.displayName || 'closing'} closed ${formatShortDate(marriageDate)}`,
+                }
+            }
         }
-        if (payingMember.marriage_flag === true) {
+        if (skipAlreadyClosed && payingMember.marriage_flag === true) {
             const ocd = parseDDMMYYYY(payingMember.marriage_date || payingMember.closing_date)
             const cmd = parseDDMMYYYY(marriageDate)
-            if (ocd && cmd && ocd.getTime() <= cmd.getTime())
-                return { skip: 'already_closed', id: paymentId }
+            if (ocd && cmd && startOfDay(ocd) <= startOfDay(cmd)) {
+                return {
+                    skip: 'already_closed',
+                    id: paymentId,
+                    detail: `${payingMember.displayName || 'Member'} was already closed on ${formatShortDate(payingMember.marriage_date || payingMember.closing_date)}`,
+                }
+            }
         }
 
         const payAmount = payingMember?.payAmount || 200
@@ -357,56 +396,96 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
         // Existence set built from the already-loaded status — no extra reads
         const existsSet = new Set(existingPaymentsMap.keys())
 
-        // 1. Decide everything up-front (pure, instant)
-        const toWrite = []
-        const statusUpdates = {}
-        let skipped = 0
-
-        for (const closingMember of closingMembers) {
-            for (const payingMember of payingMembers) {
-                const key = `${closingMember.id}_${payingMember.id}`
-                const res = evaluatePair(closingMember, payingMember, existsSet)
-                if (res.skip) {
-                    skipped++
-                    statusUpdates[key] = {
-                        status: res.skip === 'exists' ? 'exists' : 'skipped',
-                        reason: res.skip,
-                    }
-                    continue
-                }
-                toWrite.push(res)
-                statusUpdates[key] = { status: 'generated', id: res.id }
-            }
-        }
-
-        if (toWrite.length === 0) {
-            setPaymentGenerationStatus(statusUpdates)
-            message.info(`Nothing to generate — ${skipped} pair(s) skipped or already exist`)
-            return
-        }
-
-        // 2. Write in batches, reporting progress as each chunk lands
+        // EVERYTHING runs inside this try/finally. Previously the evaluate loop
+        // sat outside it, so any error there (e.g. a missing helper) escaped as
+        // an unhandled rejection and the button just sat there doing nothing —
+        // which looked like a hang.
         setIsGenerating(true)
-        setProgress({ done: 0, total: toWrite.length, label: 'Generating entries' })
-
         let written = 0
+        let total = 0
+
         try {
-            for (let i = 0; i < toWrite.length; i += BATCH_LIMIT) {
+            // 1. Decide everything up-front. Pure, but for big selections this
+            //    is tens of thousands of iterations, so yield periodically to
+            //    keep the tab responsive and let the progress bar paint.
+            const totalPairs = closingMembers.length * payingMembers.length
+            setProgress({ done: 0, total: totalPairs, label: 'Checking members' })
+
+            const toWrite = []
+            const statusUpdates = {}
+            let skipped = 0
+            let seen = 0
+
+            for (const closingMember of closingMembers) {
+                for (const payingMember of payingMembers) {
+                    const key = `${closingMember.id}_${payingMember.id}`
+                    const res = evaluatePair(closingMember, payingMember, existsSet, evalOpts)
+                    if (res.skip) {
+                        skipped++
+                        statusUpdates[key] = {
+                            status: res.skip === 'exists' ? 'exists' : 'skipped',
+                            reason: res.skip,
+                        }
+                    } else {
+                        toWrite.push(res)
+                        statusUpdates[key] = { status: 'generated', id: res.id }
+                    }
+
+                    seen++
+                    if (seen % YIELD_EVERY === 0) {
+                        setProgress({ done: seen, total: totalPairs, label: 'Checking members' })
+                        await yieldToUI()
+                    }
+                }
+            }
+
+            total = toWrite.length
+
+            if (total === 0) {
+                setPaymentGenerationStatus(statusUpdates)
+
+                // Spell out WHY — "8 skipped" on its own tells the user nothing
+                const tally = {}
+                Object.values(statusUpdates).forEach(s => {
+                    if (s.reason) tally[s.reason] = (tally[s.reason] || 0) + 1
+                })
+                const breakdown = Object.entries(tally)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([r, n]) => `${SKIP_LABELS[r] || r}: ${n}`)
+                    .join(' · ')
+
+                message.info(
+                    `Nothing to generate — ${skipped} pair(s) skipped${breakdown ? ` (${breakdown})` : ''}`,
+                    6
+                )
+                return
+            }
+
+            // 2. Write in batches, reporting progress as each chunk lands
+            setProgress({ done: 0, total, label: 'Generating entries' })
+
+            for (let i = 0; i < total; i += BATCH_LIMIT) {
                 const chunk = toWrite.slice(i, i + BATCH_LIMIT)
                 const batch = writeBatch(db)          // fresh batch every chunk
                 chunk.forEach(({ id, data }) => batch.set(doc(paymentsRef, id), data))
                 await batch.commit()
                 written += chunk.length
-                setProgress({ done: written, total: toWrite.length, label: 'Generating entries' })
+                setProgress({ done: written, total, label: 'Generating entries' })
             }
 
             setPaymentGenerationStatus(statusUpdates)
             message.success(`Generated ${written} entries · ${skipped} skipped`, 5)
             await checkExistingPayments()
         } catch (e) {
-            console.error(e)
-            message.error(`Failed after ${written} of ${toWrite.length} entries: ${e.message}`)
+            console.error('[GenerateRasidEntry] generation failed:', e)
+            message.error(
+                written > 0
+                    ? `Failed after ${written} of ${total} entries: ${e.message}`
+                    : `Failed to generate entries: ${e.message}`,
+                6
+            )
         } finally {
+            // Always releases the button, whatever went wrong
             setIsGenerating(false)
             setProgress(null)
         }
@@ -534,14 +613,24 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
      *   unknownMember   payer missing or no longer exists
      *   selfPayment     member paying for their own closing
      */
+    /* `review: true` means the category is NOT included in "Clean all".
+     * These entries are usually perfectly valid — they just look odd — so
+     * deleting them in bulk was wiping out real, linked payments. They can
+     * still be deleted deliberately from their own card. */
     const ISSUE_META = {
-        duplicate:       { label: 'Duplicate entries',        hint: 'Same closing member + same payer, more than one document' },
-        noClosing:       { label: 'Not linked to a closing',  hint: 'closingMemberId is missing or empty' },
+        duplicate:       { label: 'Duplicate entries',        hint: 'Same closing member + same payer, more than one document. Only the surplus copies are listed — one is always kept.' },
+        noClosing:       { label: 'Not linked to a closing',  hint: 'closingMemberId is missing or empty — this entry points at nobody' },
         unknownClosing:  { label: 'Unknown closing member',   hint: 'Closing member no longer exists in this program' },
-        notClosedMember: { label: 'Closing member not closed', hint: 'Linked member exists but marriage_flag is not set' },
         unknownMember:   { label: 'Unknown payer',            hint: 'Paying member missing or no longer exists' },
         selfPayment:     { label: 'Self payment',             hint: 'Member is paying for their own closing' },
+        notClosedMember: {
+            label: 'Closing member not marked closed',
+            hint: 'The entry IS linked to a real member, but that member has no marriage_flag. Usually this just means the closing was recorded differently — these are normally valid entries.',
+            review: true,
+        },
     }
+
+    const SAFE_ISSUE_KEYS = Object.keys(ISSUE_META).filter(k => !ISSUE_META[k].review)
 
     const scanPaymentIssues = async () => {
         if (!user?.uid || !selectedProgram?.id) return
@@ -622,6 +711,8 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                 totalDocs: all.length,
                 issues,
                 totalIssues: Object.values(issues).reduce((s, arr) => s + arr.length, 0),
+                // What "Clean all" would actually touch — review-only categories excluded
+                safeIssues: SAFE_ISSUE_KEYS.reduce((s, k) => s + (issues[k]?.length || 0), 0),
             })
         } catch (e) {
             console.error(e)
@@ -822,7 +913,63 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
     /* derived counts */
     const totalCombinations = selectedClosingMembers.length * selectedMembers.length
     const totalGeneratedPayments = Array.from(closingMembersStatus.values()).reduce((s, v) => s + (v?.generated || 0), 0)
-    const pendingCount = totalCombinations - totalGeneratedPayments
+
+    /* ── Live eligibility preview ──────────────────────────────────────────
+     * "Not yet generated" is NOT the same as "will be generated" — a pair can
+     * also be ineligible (member joined after the closing, already closed,
+     * inactive…). Showing the raw difference made the footer promise "4
+     * pending" and then report "nothing to generate", which looked broken.
+     * This runs the very same evaluatePair used by the writer, so the number
+     * on screen is exactly what the button will do.
+     */
+    const SKIP_LABELS = {
+        exists: 'Already generated',
+        same_member: 'Same member',
+        member_inactive: 'Inactive / blocked member',
+        joined_after_marriage: 'Joined after the closing date',
+        already_closed: 'Member already closed',
+    }
+
+    const eligibility = useMemo(() => {
+        const result = { eligible: 0, reasons: {}, samples: {}, computed: false }
+        if (!selectedClosingMembers.length || !selectedMembers.length) return result
+        // Skip the preview for very large selections — the writer still
+        // evaluates everything, this is only the on-screen estimate.
+        if (totalCombinations > 5000) return result
+
+        const closingMembers = closingMemberList.filter(m => selectedClosingMembers.includes(m.id))
+        const payingMembers = allMembersData.filter(m => selectedMembers.includes(m.id))
+        const existsSet = new Set(existingPaymentsMap.keys())
+
+        for (const cm of closingMembers) {
+            for (const pm of payingMembers) {
+                const res = evaluatePair(cm, pm, existsSet, evalOpts)
+                if (res.skip) {
+                    result.reasons[res.skip] = (result.reasons[res.skip] || 0) + 1
+                    // Keep a few real examples so the user can check the data
+                    if (res.detail) {
+                        if (!result.samples[res.skip]) result.samples[res.skip] = []
+                        if (result.samples[res.skip].length < 3) result.samples[res.skip].push(res.detail)
+                    }
+                } else result.eligible++
+            }
+        }
+        result.computed = true
+        return result
+    }, [
+        selectedClosingMembers, selectedMembers, existingPaymentsMap,
+        closingMemberList, allMembersData, totalCombinations,
+        skipJoinedAfter, skipAlreadyClosed,
+    ])
+
+    // What the Generate button will actually create
+    const pendingCount = eligibility.computed
+        ? eligibility.eligible
+        : totalCombinations - totalGeneratedPayments
+
+    const blockedReasons = Object.entries(eligibility.reasons)
+        .filter(([k]) => k !== 'exists')
+        .sort((a, b) => b[1] - a[1])
 
     /* result chip data */
     const genResults = [
@@ -954,13 +1101,13 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                                 danger
                                 type="primary"
                                 icon={<DeleteOutlined />}
-                                onClick={() => runCleanup(Object.keys(ISSUE_META))}
+                                onClick={() => runCleanup(SAFE_ISSUE_KEYS)}
                                 loading={isDeleting}
-                                disabled={isBusy || !scanResult || scanResult.totalIssues === 0}
+                                disabled={isBusy || !scanResult || scanResult.safeIssues === 0}
                             >
                                 Clean all
-                                {scanResult?.totalIssues > 0 && (
-                                    <span style={styles.pendingBadge}>{scanResult.totalIssues}</span>
+                                {scanResult?.safeIssues > 0 && (
+                                    <span style={styles.pendingBadge}>{scanResult.safeIssues}</span>
                                 )}
                             </Button>
                         ) : isDeleteMode ? (
@@ -1127,9 +1274,10 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                                         icon={<DeleteOutlined />}
                                         style={{ marginLeft: 'auto' }}
                                         disabled={isBusy}
-                                        onClick={() => runCleanup(Object.keys(ISSUE_META))}
+                                        onClick={() => runCleanup(SAFE_ISSUE_KEYS)}
+                                        disabled={isBusy || scanResult.safeIssues === 0}
                                     >
-                                        Clean all ({scanResult.totalIssues})
+                                        Clean all ({scanResult.safeIssues})
                                     </Button>
                                 </div>
 
@@ -1141,15 +1289,24 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                                         <div
                                             key={key}
                                             style={{
-                                                border: '0.5px solid #e0e0e0', borderLeft: `3px solid ${t.red.text}`,
+                                                border: '0.5px solid #e0e0e0',
+                                                borderLeft: `3px solid ${meta.review ? t.amber.text : t.red.text}`,
                                                 borderRadius: 8, padding: '12px 14px', marginBottom: 8,
+                                                background: meta.review ? t.amber.bg : '#fff',
                                             }}
                                         >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ fontSize: 14, fontWeight: 500 }}>
                                                         {meta.label}
-                                                        <Tag color="red" style={{ marginLeft: 8, fontSize: 11 }}>{list.length}</Tag>
+                                                        <Tag color={meta.review ? 'orange' : 'red'} style={{ marginLeft: 8, fontSize: 11 }}>
+                                                            {list.length}
+                                                        </Tag>
+                                                        {meta.review && (
+                                                            <Tag color="gold" style={{ fontSize: 11 }}>
+                                                                review only — not in “Clean all”
+                                                            </Tag>
+                                                        )}
                                                         {paidInList > 0 && (
                                                             <Tag color="green" style={{ fontSize: 11 }}>{paidInList} paid</Tag>
                                                         )}
@@ -1160,7 +1317,7 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                                                 </div>
                                                 <Button
                                                     size="small"
-                                                    danger
+                                                    danger={!meta.review}
                                                     icon={<DeleteOutlined />}
                                                     disabled={isBusy}
                                                     onClick={() => runCleanup([key])}
@@ -1544,9 +1701,79 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                                 </div>
                             </div>
                             <div style={styles.statCard}>
-                                <div style={styles.statLabel}>Pending</div>
+                                <div style={styles.statLabel}>
+                                    {eligibility.computed ? 'Will generate' : 'Pending'}
+                                </div>
                                 <div style={styles.statValue(pendingCount > 0 ? t.amber.text : t.green.text)}>
                                     {pendingCount}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Why the remaining pairs won't be generated */}
+                        {blockedReasons.length > 0 && (
+                            <div style={{
+                                background: t.amber.bg, border: `0.5px solid ${t.amber.border}`,
+                                borderRadius: 8, padding: '12px 14px', marginBottom: 16,
+                            }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: t.amber.text, marginBottom: 6 }}>
+                                    {blockedReasons.reduce((s, [, n]) => s + n, 0)} pair(s) will be skipped
+                                </div>
+                                {blockedReasons.map(([reason, count]) => (
+                                    <div key={reason} style={{ marginTop: 6 }}>
+                                        <div style={{ fontSize: 12, color: '#595959' }}>
+                                            · {SKIP_LABELS[reason] || reason} — <strong>{count}</strong>
+                                        </div>
+                                        {/* Real examples, so the dates can be checked */}
+                                        {(eligibility.samples[reason] || []).map((d, i) => (
+                                            <div key={i} style={{ fontSize: 11, color: '#8c8c8c', paddingLeft: 12 }}>
+                                                {d}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Rule switches — turn a rule off when the data is wrong */}
+                        <div style={{
+                            border: '0.5px solid #e0e0e0', borderRadius: 8,
+                            padding: '12px 14px', marginBottom: 16,
+                        }}>
+                            <div style={styles.sectionLabel}>Eligibility rules</div>
+
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                                <Switch
+                                    size="small"
+                                    checked={skipJoinedAfter}
+                                    onChange={setSkipJoinedAfter}
+                                    disabled={isBusy}
+                                />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13 }}>
+                                        Skip members who joined <strong>after</strong> the closing date
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+                                        Off karein agar kisi member ki join date galat dari hui hai aur
+                                        purani closing ke liye bhi entry chahiye.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                <Switch
+                                    size="small"
+                                    checked={skipAlreadyClosed}
+                                    onChange={setSkipAlreadyClosed}
+                                    disabled={isBusy}
+                                />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13 }}>
+                                        Skip members who are <strong>already closed</strong>
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+                                        Jinka apna samapan pehle ho chuka, unse contribution nahi liya jata.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1564,12 +1791,20 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                             </div>
                             <div>
                                 {[
-                                    'Skips already existing payments',
-                                    'Skips members who joined after marriage date',
-                                    'Skips already closed or married members',
-                                ].map(text => (
-                                    <div key={text} style={styles.skipItem}>
+                                    ['Skips already existing payments', true],
+                                    ['Skips members who joined after the closing date', skipJoinedAfter],
+                                    ['Skips already closed members', skipAlreadyClosed],
+                                ].map(([text, active]) => (
+                                    <div
+                                        key={text}
+                                        style={{
+                                            ...styles.skipItem,
+                                            color: active ? '#8c8c8c' : '#bfbfbf',
+                                            textDecoration: active ? 'none' : 'line-through',
+                                        }}
+                                    >
                                         <span style={{ marginTop: 2 }}>·</span> {text}
+                                        {!active && <span style={{ marginLeft: 6 }}>(off)</span>}
                                     </div>
                                 ))}
                             </div>

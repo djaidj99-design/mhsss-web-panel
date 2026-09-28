@@ -47,6 +47,8 @@ import {
 import dayjs from 'dayjs';
 import { PDFDownloadLink, PDFViewer, pdf } from '@react-pdf/renderer';
 import PaymentReportPDF from '../component/pdfcom/PaymentReportPDF';
+import PaidHistoryPdf from '@/components/pdfcom/PaidHistoryPdf';
+import { fetchPaidHistory } from '@/lib/paidHistory';
 import { setSelectedProgram } from '@/redux/slices/commonSlice';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -642,15 +644,41 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
     );
   }, [getPendingRasidData, summary, agentInfo, selectedProgram, selectionMode, getPendingFileName, downloadPdf]);
 
-  const handleDownloadPaid = useCallback(() => {
-    const data = getPaidRasidData();
-    if (!data.length) return;
-    downloadPdf(
-      <PaymentReportPDF data={data} summary={summary} agentInfo={agentInfo} programInfo={selectedProgram} filters={{ statusFilter: 'paid' }} selectionMode={selectionMode} selectedCount={data.length} />,
-      getPaidFileName(),
-      setPaidPdfLoading
-    );
-  }, [getPaidRasidData, summary, agentInfo, selectedProgram, selectionMode, getPaidFileName, downloadPdf]);
+  // भुगतान रसीद: transactions से तिथिवार — बकाया शून्य होने पर भी बनती है
+  const buildPaidHistoryDoc = useCallback(async (members) => {
+    const historyMap = await fetchPaidHistory({
+      userId: user?.uid,
+      programId: selectedProgram?.id,
+      payerIds: members.map((m) => m.memberId),
+    });
+    const withPayments = members
+      .filter((m) => (historyMap[m.memberId]?.rows?.length || 0) > 0)
+      .map((m) => ({ ...m, pendingAmount: m.summary?.pendingAmount || 0 }));
+    return { historyMap, withPayments };
+  }, [user?.uid, selectedProgram?.id]);
+
+  const handleDownloadPaid = useCallback(async () => {
+    const members = getExportData();
+    if (!members.length) return;
+    setPaidPdfLoading(true);
+    try {
+      const { historyMap, withPayments } = await buildPaidHistoryDoc(members);
+      if (!withPayments.length) {
+        message.info('चयनित सदस्यों का अभी तक कोई भुगतान दर्ज नहीं है');
+        return;
+      }
+      await downloadPdf(
+        <PaidHistoryPdf members={withPayments} historyMap={historyMap} programName={selectedProgram?.name} agentName={agentInfo?.displayName} />,
+        getPaidFileName(),
+        setPaidPdfLoading
+      );
+    } catch (e) {
+      console.error(e);
+      message.error('भुगतान रसीद बनाने में समस्या: ' + e.message);
+    } finally {
+      setPaidPdfLoading(false);
+    }
+  }, [getExportData, buildPaidHistoryDoc, selectedProgram, agentInfo, getPaidFileName, downloadPdf]);
 
   const handleMemberDownloadPending = useCallback((member) => {
     const memberData = [{ ...member, marriages: (member.marriages || []).filter(x => x.status === 'pending') }].filter(m => m.marriages.length > 0);
@@ -663,16 +691,30 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
     );
   }, [agentInfo, selectedProgram, downloadPdf]);
 
-  const handleMemberDownloadPaid = useCallback((member) => {
-    const memberData = [{ ...member, marriages: (member.marriages || []).filter(x => x.status === 'paid') }].filter(m => m.marriages.length > 0);
-    if (!memberData.length) return;
+  const handleMemberDownloadPaid = useCallback(async (member) => {
     const name = (member.displayName || 'Member').replace(/\s+/g, '_');
-    downloadPdf(
-      <PaymentReportPDF data={memberData} summary={{}} agentInfo={agentInfo} programInfo={selectedProgram} filters={{ statusFilter: 'paid' }} selectionMode="all" selectedCount={1} />,
-      `${name}_Paid_Rasid_${dayjs().format('DDMMYYYY')}.pdf`,
-      setMemberPaidPdfLoading
-    );
-  }, [agentInfo, selectedProgram, downloadPdf]);
+    setMemberPaidPdfLoading(true);
+    try {
+      const historyMap = await fetchPaidHistory({
+        userId: user?.uid, programId: selectedProgram?.id, payerIds: [member.memberId],
+      });
+      await downloadPdf(
+        <PaidHistoryPdf
+          members={[{ ...member, pendingAmount: member.summary?.pendingAmount || 0 }]}
+          historyMap={historyMap}
+          programName={selectedProgram?.name}
+          agentName={agentInfo?.displayName}
+        />,
+        `${name}_Paid_Rasid_${dayjs().format('DDMMYYYY')}.pdf`,
+        setMemberPaidPdfLoading
+      );
+    } catch (e) {
+      console.error(e);
+      message.error('भुगतान रसीद बनाने में समस्या: ' + e.message);
+    } finally {
+      setMemberPaidPdfLoading(false);
+    }
+  }, [user?.uid, agentInfo, selectedProgram, downloadPdf]);
 
   const hasActiveFilters =
     activeFilters.search || activeFilters.status || activeFilters.group;
@@ -757,11 +799,11 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
           <Button
             icon={<DownloadOutlined />}
             loading={paidPdfLoading}
-            disabled={getPaidRasidData().length === 0}
+            disabled={getExportData().length === 0}
             style={{ borderColor: '#389e0d', color: '#389e0d' }}
             onClick={handleDownloadPaid}
           >
-            भुगतान रसीद ({getPaidRasidData().length})
+            भुगतान रसीद ({getExportData().length})
           </Button>
 
           <Button
@@ -1174,11 +1216,10 @@ const MemberPayStatus = ({ agentId, agentInfo }) => {
                   key="paid-pdf"
                   icon={<DownloadOutlined />}
                   loading={memberPaidPdfLoading}
-                  disabled={(selectedMember.marriages || []).filter(x => x.status === 'paid').length === 0}
                   style={{ borderColor: '#389e0d', color: '#389e0d' }}
                   onClick={() => handleMemberDownloadPaid(selectedMember)}
                 >
-                  भुगतान रसीद ({(selectedMember.marriages || []).filter(x => x.status === 'paid').length})
+                  भुगतान रसीद (तिथिवार)
                 </Button>,
               ]
             : [

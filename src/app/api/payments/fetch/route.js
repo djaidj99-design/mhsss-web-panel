@@ -1,6 +1,7 @@
 // app/api/payments/fetch/route.js
 import { NextResponse } from 'next/server';
 import admin from '../../admin';
+import { summarizeEntries } from '@/lib/paymentMath';
 
 const adminDb = admin.firestore();
 const adminAuth = admin.auth();
@@ -42,7 +43,7 @@ export async function GET(request) {
       // Only fetch fields needed for stats — huge payload reduction
       adminDb.collection(`${basePath}/payment_pending`)
         .where('delete_flag', '==', false)
-        .select('memberId', 'status')
+        .select('memberId', 'status', 'payAmount', 'paidAmount')
         .get(),
 
       // Only fetch fields needed for sum
@@ -54,15 +55,12 @@ export async function GET(request) {
     ]);
 
     // 3. Pre-group by memberId — O(n) instead of O(n²) filter inside loop
-    const pendingByMember = {};
+    // Har member ki entries (paid / partial / pending) — calculation paymentMath se
+    const entriesByMember = {};
     for (const doc of pendingSnap.docs) {
-      const { memberId, status } = doc.data();
-      if (!pendingByMember[memberId]) {
-        pendingByMember[memberId] = { total: 0, pending: 0, paid: 0 };
-      }
-      pendingByMember[memberId].total++;
-      if (status === 'pending') pendingByMember[memberId].pending++;
-      if (status === 'paid')    pendingByMember[memberId].paid++;
+      const p = doc.data();
+      if (!entriesByMember[p.memberId]) entriesByMember[p.memberId] = [];
+      entriesByMember[p.memberId].push(p);
     }
 
     const paidAmtByMember = {};
@@ -76,11 +74,14 @@ export async function GET(request) {
 
     const enriched = membersSnap.docs.map((d) => {
       const member = { id: d.id, ...d.data() };
-      const payAmount  = member.payAmount || 200;
-      const stats      = pendingByMember[member.id] || { total: 0, pending: 0, paid: 0 };
-      const totalPaid  = paidAmtByMember[member.id] || 0;
-      const totalAmt   = stats.total * payAmount;
-      const totalPend  = Math.max(0, totalAmt - totalPaid);
+      const payAmount  = Number(member.payAmount) || 0;
+      const stats      = summarizeEntries(entriesByMember[member.id] || [], payAmount);
+      // Paid / Pending dono entries se — taaki Pending Details, Agent Statement
+      // aur yeh page hamesha same number dikhayein
+      const totalPaid  = stats.paidAmount;
+      const totalAmt   = stats.totalAmount;
+      const totalPend  = stats.pendingAmount;
+      const txPaid     = paidAmtByMember[member.id] || 0; // असली जमा (transactions)
       const paidPct    = totalAmt > 0 ? Math.round((totalPaid / totalAmt) * 100) : 0;
 
       summaryTotalAmt     += totalAmt;
@@ -92,9 +93,12 @@ export async function GET(request) {
         ...member,
         key: member.id,
         payAmount,
-        closingCount:        stats.total,
-        pendingClosingCount: stats.pending,
-        paidClosingCount:    stats.paid,
+        closingCount:        stats.totalMarriages,
+        pendingClosingCount: stats.pendingMarriages,
+        paidClosingCount:    stats.paidMarriages,
+        partialClosingCount: stats.partialMarriages,
+        txPaid,
+        paidMismatch:        Math.round((txPaid - totalPaid) * 100) / 100,
         totalAmount:         totalAmt,
         totalPaid,
         totalPending:        totalPend,

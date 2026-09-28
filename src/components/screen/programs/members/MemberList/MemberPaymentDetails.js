@@ -24,7 +24,11 @@ import {
     WalletOutlined,
     DownloadOutlined
 } from '@ant-design/icons';
-import { PDFDownloadLink, PDFViewer } from '@react-pdf/renderer';
+import { PDFDownloadLink, PDFViewer, pdf } from '@react-pdf/renderer';
+import { message } from 'antd';
+import { useAuth } from '@/lib/AuthProvider';
+import PaidHistoryPdf from '@/components/pdfcom/PaidHistoryPdf';
+import { fetchPaidHistory } from '@/lib/paidHistory';
 import SingleMemberPendingPaymentPdf from './PendingPaymentPdf';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
@@ -36,6 +40,39 @@ function MemberPaymentDetails({ visible, onClose, memberData, paymentReport, loa
     console.log(paymentReport,'paymentReport')
     const selectedProgram = useSelector((state) => state.data.selectedProgram);
     const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+    const [paidPdfLoading, setPaidPdfLoading] = useState(false);
+    const { user } = useAuth();
+
+    // भुगतान रसीद (तिथिवार) — बकाया शून्य होने पर भी
+    const handlePaidReceipt = async () => {
+        const m = memberData;
+        const memberId = m?.id || m?.memberId;
+        if (!memberId || !user?.uid || !selectedProgram?.id) return;
+        setPaidPdfLoading(true);
+        try {
+            const historyMap = await fetchPaidHistory({
+                userId: user.uid, programId: selectedProgram.id, payerIds: [memberId],
+            });
+            const blob = await pdf(
+                <PaidHistoryPdf
+                    members={[{ ...m, memberId, pendingAmount: paymentReport?.report?.summary?.pendingAmount || 0 }]}
+                    historyMap={historyMap}
+                    programName={selectedProgram?.name}
+                />
+            ).toBlob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(m.displayName || 'Member').replace(/\s+/g, '_')}_Paid_Rasid_${dayjs().format('DDMMYYYY')}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error(e);
+            message.error('भुगतान रसीद बनाने में समस्या: ' + e.message);
+        } finally {
+            setPaidPdfLoading(false);
+        }
+    };
 
 // Update download function
 const handleDownloadPDF = () => {
@@ -138,6 +175,13 @@ const handleDownloadPDF = () => {
             loading={loading}
             extra={
                 <div className='flex items-center gap-2'>
+                <Button
+                    loading={paidPdfLoading}
+                    onClick={handlePaidReceipt}
+                    style={{ borderColor: '#389e0d', color: '#389e0d' }}
+                >
+                    भुगतान रसीद (तिथिवार)
+                </Button>
                        <Button type="primary" onClick={handleDownloadPDF}>
                     Pending PDF Download
                 </Button>

@@ -10,6 +10,7 @@ import {
   
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { entryDue, entryPaid, entryRemaining, summarizeEntries } from "./paymentMath";
 
 // मान लीजिए कि 'db' आपकी Firebase इनिशियलाइज़ेशन फ़ाइल से आयात किया गया है
 // import { db } from "./firebase"; 
@@ -599,6 +600,7 @@ export const fetchSingleMemberMarriageReport = async ({
     );
 
     const paymentSnap = await getDocs(q);
+    const paymentEntries = [];
 
     paymentSnap.forEach((docSnap) => {
       const payment = docSnap.data();
@@ -616,24 +618,27 @@ export const fetchSingleMemberMarriageReport = async ({
         paymentFor: payment.paymentFor || "Marriage Case",
         closingPhone: payment.phone || "NA",
         status: payment.status || "pending",
-        amount: payment.payAmount || 0,
+        amount: entryDue(payment, Number(memberData.payAmount) || 0),
+        paidAmount: entryPaid(payment, Number(memberData.payAmount) || 0),
+        remainingAmount: entryRemaining(payment, Number(memberData.payAmount) || 0),
         createdDate: payment.createdDate || "",
         updatedDate: payment.updatedDate || ""
       };
 
       member.marriages.push(marriageData);
-
-      // 🔹 Summary calculation
-      if (payment.status === "pending") {
-        member.summary.pendingMarriages++;
-        member.summary.pendingAmount += payment.payAmount || 0;
-      } else if (payment.status === "paid") {
-        member.summary.paidMarriages++;
-        member.summary.paidAmount += payment.payAmount || 0;
-      }
-
-      member.summary.totalMarriages++;
+      paymentEntries.push(payment);
     });
+
+    // 🔹 Summary — paymentMath se (partial bhi sahi gina jata hai)
+    const sum = summarizeEntries(paymentEntries, Number(memberData.payAmount) || 0);
+    member.summary = {
+      totalMarriages: sum.totalMarriages,
+      pendingMarriages: sum.pendingMarriages,
+      paidMarriages: sum.paidMarriages,
+      partialMarriages: sum.partialMarriages,
+      pendingAmount: sum.pendingAmount,
+      paidAmount: sum.paidAmount
+    };
 
     // 🔹 Sort marriages (pending first, then latest)
     member.marriages.sort((a, b) => {
