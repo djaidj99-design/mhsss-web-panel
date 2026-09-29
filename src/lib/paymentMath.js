@@ -22,10 +22,15 @@ export const entryDue = (p, fallback = 0) => {
   return n === null ? fallback : n;
 };
 
-/** Is entry par ab tak jama rashi. */
+/**
+ * Is entry par ab tak jama rashi.
+ * status 'paid' => kam se kam poora due. Purane Add Payment form ne paidAmount
+ * galat likha tha (kul raashi / closings ki ginti, jaise 300/57 = 5.26),
+ * isliye paid entry ke liye paidAmount par bharosa nahi — due hi gina jata hai.
+ */
 export const entryPaid = (p, fallbackDue = 0) => {
   const paid = num(p?.paidAmount);
-  if (p?.status === 'paid') return paid && paid > 0 ? paid : entryDue(p, fallbackDue);
+  if (p?.status === 'paid') return Math.max(paid || 0, entryDue(p, fallbackDue));
   if (p?.status === 'partial') return Math.max(0, paid || 0);
   return 0;
 };
