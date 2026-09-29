@@ -184,13 +184,14 @@ const styles = StyleSheet.create({
   
   // Column Widths
   colSrNo: { width: '5%', alignItems: 'center' },
-  colRegNo: { width: '10%', alignItems: 'center' },
-  colName: { width: '22%', alignItems: 'flex-start' },
-  colFatherName: { width: '18%', alignItems: 'flex-start' },
-  colProgram: { width: '18%', alignItems: 'flex-start' },
-  colAmountPending: { width: '11%', alignItems: 'flex-end' },
-  colAmountPaid: { width: '11%', alignItems: 'flex-end' },
-  colStatus: { width: '11%', alignItems: 'center' },
+  colRegNo: { width: '9%', alignItems: 'center' },
+  colName: { width: '19%', alignItems: 'flex-start' },
+  colPhone: { width: '11%', alignItems: 'center' },
+  colFatherName: { width: '15%', alignItems: 'flex-start' },
+  colProgram: { width: '15%', alignItems: 'flex-start' },
+  colAmountPending: { width: '9%', alignItems: 'flex-end' },
+  colAmountPaid: { width: '9%', alignItems: 'flex-end' },
+  colStatus: { width: '8%', alignItems: 'center' },
   
   // Text styles
   textLeft: { textAlign: 'left' },
@@ -388,6 +389,9 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {}, groupNames = [] }) => {
       <View style={[styles.tableHeaderCell, styles.colName]}>
         <Text style={[styles.textLeft, styles.smallTableText]}>सदस्य नाम</Text>
       </View>
+      <View style={[styles.tableHeaderCell, styles.colPhone]}>
+        <Text style={[styles.textCenter, styles.smallTableText]}>मोबाइल</Text>
+      </View>
       <View style={[styles.tableHeaderCell, styles.colFatherName]}>
         <Text style={[styles.textLeft, styles.smallTableText]}>पिता/पति का नाम</Text>
       </View>
@@ -447,6 +451,12 @@ const AllPaymentPdf = ({ rowData = [], agentInfo = {}, groupNames = [] }) => {
           </View>
         </View>
         
+        {/* Phone */}
+        <View style={[styles.tableCell, styles.colPhone]}>
+          <Text style={[styles.textCenter, styles.boldTableText]}>
+            {row.phone || '-'}
+          </Text>
+        </View>
         {/* Father Name */}
         <View style={[styles.tableCell, styles.colFatherName]}>
           <Text style={[styles.textLeft, styles.smallTableText]}>

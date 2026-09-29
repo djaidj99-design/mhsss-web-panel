@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import admin from '../../admin';
 import {
-  entryDue, entryPaid, statusFor, isOpenEntry,
+  entryDue, entryPaid, entryRemaining, statusFor, isOpenEntry,
 } from '@/lib/paymentMath';
 
 const adminDb = admin.firestore();
@@ -270,7 +270,7 @@ async function processSinglePayment(uid, body) {
       if (!entry) { rejected.push({ closingId, name, reason: 'no_pending_entry' }); continue; }
       const due      = entryDue(entry, fallbackDue);
       const prevPaid = entryPaid(entry, fallbackDue);
-      const remain   = Math.max(0, due - prevPaid);
+      const remain   = entryRemaining(entry, fallbackDue);
       if (remain <= 0) { rejected.push({ closingId, name, reason: 'already_paid' }); continue; }
       targets.push({ closingId, entry, due, prevPaid, remain });
     }
@@ -395,7 +395,7 @@ async function processBulkPayment(uid, body) {
     const fallback = Number(member.payAmount) || 0;
     const due      = entryDue(p, fallback);
     const prevPaid = entryPaid(p, fallback);
-    return { entry: p, due, prevPaid, remain: Math.max(0, due - prevPaid) };
+    return { entry: p, due, prevPaid, remain: entryRemaining(p, fallback) };
   };
 
   let memberPayments = [];

@@ -125,7 +125,14 @@ async function analyse(uid, programId, { resetPaidWithoutTx = false } = {}) {
       continue;
     }
 
-    const newStatus = due <= 0 && txPaid > 0 ? 'paid' : statusFor(due, txPaid);
+    // Admin ne jise PAID kiya hai use kabhi partial/pending nahi karna.
+    // Pichhle version ne kuch paid entries ko partial kar diya tha
+    // (reconcileNote "paid/..."), unhe wapas paid karo.
+    const wasPaidBefore = typeof p.reconcileNote === 'string' && p.reconcileNote.startsWith('paid/');
+    const keepPaid = (storedStat === 'paid' || wasPaidBefore) && txPaid > 0;
+    const newStatus = keepPaid
+      ? 'paid'
+      : (due <= 0 && txPaid > 0 ? 'paid' : statusFor(due, txPaid));
     if (txPaid > due && due > 0) overpaid.push({ ...info, extra: round2(txPaid - due) });
     entryPaidAfter += txPaid;
 

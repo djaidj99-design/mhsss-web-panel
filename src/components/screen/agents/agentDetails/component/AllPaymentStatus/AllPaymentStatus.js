@@ -24,7 +24,7 @@ import { DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { getData } from '@/lib/services/firebaseService';
 import { useDispatch, useSelector } from 'react-redux';
-import { entryDue, entryPaid } from '@/lib/paymentMath';
+import { entryPaid, entryRemaining } from '@/lib/paymentMath';
 
 ModuleRegistry.registerModules([
   NumberEditorModule,
@@ -75,8 +75,8 @@ const COL_DEFS = [
   { headerName: '#',              field: 'index',              width: 60,  pinned: 'left', cellStyle: { fontWeight: 700, color: '#6b7280' } },
   { headerName: 'Reg. No.',       field: 'registrationNumber', width: 110, pinned: 'left', cellStyle: { fontWeight: 700 } },
   { headerName: 'Member Name',    field: 'memberName',         minWidth: 170, cellStyle: { fontWeight: 600 } },
+  { headerName: 'Phone',          field: 'phone',              width: 130, cellStyle: { fontWeight: 600, color: '#0f172a' } },
   { headerName: 'Father Name',    field: 'fatherName',         minWidth: 140 },
-  { headerName: 'Phone',          field: 'phone',              width: 130 },
   { headerName: 'Village',        field: 'village',            minWidth: 120 },
   { headerName: 'Program',        field: 'programName',        minWidth: 180, cellStyle: { fontWeight: 600, color: '#4f46e5' } },
   {
@@ -235,9 +235,8 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
             let totalPaid = 0, totalPending = 0, paidCount = 0, pendingCount = 0;
             const fallbackDue = Number(memberDoc.payAmount) || 0;
             memberPayments.forEach((p) => {
-              const due = entryDue(p, fallbackDue);
               const paid = entryPaid(p, fallbackDue);
-              const rem = Math.max(0, due - paid);
+              const rem = entryRemaining(p, fallbackDue);
               totalPaid += paid;
               totalPending += rem;
               if (rem > 0) pendingCount++; else paidCount++;
@@ -248,7 +247,7 @@ const AllPaymentStatus = ({ agentId, agentInfo }) => {
               registrationNumber: memberDoc.registrationNumber,
               memberName:  memberDoc.displayName,
               fatherName:  memberDoc.fatherName,
-              phone:       memberDoc.phone,
+              phone:       memberDoc.phone || memberDoc.phoneNo || memberDoc.phoneAlt || '',
               village:     memberDoc.village,
               programName: programData.name,
               programId,

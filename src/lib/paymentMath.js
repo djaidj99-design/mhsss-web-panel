@@ -30,9 +30,16 @@ export const entryPaid = (p, fallbackDue = 0) => {
   return 0;
 };
 
-/** Is entry par abhi kitna baaki hai. */
-export const entryRemaining = (p, fallbackDue = 0) =>
-  Math.max(0, entryDue(p, fallbackDue) - entryPaid(p, fallbackDue));
+/**
+ * Is entry par abhi kitna baaki hai.
+ * status 'paid' = poora chukta (0 baaki) — chahe purane data me paidAmount
+ * payAmount se kam likha ho (pehle form ka amount / member ka purana amount
+ * likha jata tha). Admin ne paid kiya hai to paid hi maana jayega.
+ */
+export const entryRemaining = (p, fallbackDue = 0) => {
+  if (p?.status === 'paid') return 0;
+  return Math.max(0, entryDue(p, fallbackDue) - entryPaid(p, fallbackDue));
+};
 
 /** Jama rashi se status. */
 export const statusFor = (due, paid) => {
@@ -60,11 +67,10 @@ export const summarizeEntries = (entries = [], fallbackDue = 0) => {
   };
   for (const p of entries) {
     if (p?.delete_flag === true) continue;
-    const due = entryDue(p, fallbackDue);
     const paid = entryPaid(p, fallbackDue);
-    const rem = Math.max(0, due - paid);
+    const rem = entryRemaining(p, fallbackDue);
     s.totalMarriages++;
-    s.totalAmount += Math.max(due, paid);
+    s.totalAmount += paid + rem;
     s.paidAmount += paid;
     s.pendingAmount += rem;
     if (rem <= 0) s.paidMarriages++;

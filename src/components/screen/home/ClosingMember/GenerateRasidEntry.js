@@ -1286,6 +1286,7 @@ const GenerateRasidEntry = ({ open, setOpen, selectedProgram, user, closingMembe
                                     if (list.length === 0) return null
                                     const paidInList = list.filter(p => p.status === 'paid').length
                                     return (
+                                        
                                         <div
                                             key={key}
                                             style={{
