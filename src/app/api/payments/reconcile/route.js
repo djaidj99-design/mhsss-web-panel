@@ -24,16 +24,19 @@ async function verifyToken(request) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-async function analyse(uid, programId, { resetPaidWithoutTx = false } = {}) {
+async function analyse(uid, programId, { resetPaidWithoutTx = false, memberId = null } = {}) {
   const basePath = `users/${uid}/programs/${programId}`;
 
-  const [pendSnap, txSnap] = await Promise.all([
-    adminDb.collection(`${basePath}/payment_pending`).get(),
-    adminDb.collection(`${basePath}/transactions`)
-      .where('status', '==', 'completed')
-      .where('delete_flag', '==', false)
-      .get(),
-  ]);
+  // memberId diya ho to sirf us sadasya ka milan (Member Payment Details se)
+  const pendQ = memberId
+    ? adminDb.collection(`${basePath}/payment_pending`).where('memberId', '==', memberId)
+    : adminDb.collection(`${basePath}/payment_pending`);
+  let txQ = adminDb.collection(`${basePath}/transactions`)
+    .where('status', '==', 'completed')
+    .where('delete_flag', '==', false);
+  if (memberId) txQ = txQ.where('payerId', '==', memberId);
+
+  const [pendSnap, txSnap] = await Promise.all([pendQ.get(), txQ.get()]);
 
   const entries = pendSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
@@ -143,6 +146,34 @@ async function analyse(uid, programId, { resetPaidWithoutTx = false } = {}) {
     }
   }
 
+  // ── Duplicate: ek hi sadasya + ek hi closing ki 2 entries ──────────────
+  // Ek paid ho jaati hai aur doosri pending dikhti rehti hai.
+  const duplicates = [];
+  const pairGroups = new Map();
+  for (const p of entries) {
+    const cid = p.closingMemberId || p.marriageId;
+    if (!cid || !p.memberId) continue;
+    const k = `${p.memberId}|${cid}`;
+    if (!pairGroups.has(k)) pairGroups.set(k, []);
+    pairGroups.get(k).push(p);
+  }
+  for (const list of pairGroups.values()) {
+    if (list.length < 2) continue;
+    // jise rakhna hai: jiska transaction/paid ho, warna standard id wali
+    const score = (p) => (paidByEntry.get(p.id)?.sum || 0) * 10 + (p.status === 'paid' ? 5 : 0)
+      + (p.id === `${p.closingMemberId || p.marriageId}_${p.memberId}` ? 1 : 0);
+    const keep = [...list].sort((a, b) => score(b) - score(a))[0];
+    for (const p of list) {
+      if (p.id === keep.id || (paidByEntry.get(p.id)?.sum || 0) > 0) continue;
+      duplicates.push({
+        entryId: p.id, keepId: keep.id,
+        payerName: p.memberDetails?.displayName || '', payerRegNo: p.memberDetails?.registrationNumber || '',
+        closingName: p.paymentFor || '', closingRegNo: p.closingRegNo || '',
+        status: p.status || 'pending', keepStatus: keep.status || 'pending',
+      });
+    }
+  }
+
   const orphanAmount = orphanTx.reduce((s, t) => s + t.amount, 0);
 
   return {
@@ -160,7 +191,9 @@ async function analyse(uid, programId, { resetPaidWithoutTx = false } = {}) {
       overpaidAmount: round2(overpaid.reduce((s, x) => s + x.extra, 0)),
       orphanTxCount: orphanTx.length,
       orphanTxAmount: round2(orphanAmount),
+      duplicateCount: duplicates.length,
     },
+    duplicates,
     paidWithoutTx,
     overpaid,
     orphanTx,
@@ -172,10 +205,12 @@ export async function GET(request) {
   try {
     const { uid, error } = await verifyToken(request);
     if (error) return NextResponse.json({ error }, { status: 401 });
-    const programId = new URL(request.url).searchParams.get('programId');
+    const sp = new URL(request.url).searchParams;
+    const programId = sp.get('programId');
+    const memberId = sp.get('memberId') || null;
     if (!programId) return NextResponse.json({ error: 'programId required' }, { status: 400 });
 
-    const result = await analyse(uid, programId);
+    const result = await analyse(uid, programId, { memberId });
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
     console.error('[payments/reconcile GET]', err);
@@ -188,10 +223,10 @@ export async function POST(request) {
   try {
     const { uid, error } = await verifyToken(request);
     if (error) return NextResponse.json({ error }, { status: 401 });
-    const { programId, resetPaidWithoutTx = false } = await request.json();
+    const { programId, resetPaidWithoutTx = false, memberId = null } = await request.json();
     if (!programId) return NextResponse.json({ error: 'programId required' }, { status: 400 });
 
-    const { fixes, summary } = await analyse(uid, programId, { resetPaidWithoutTx });
+    const { fixes, summary, duplicates } = await analyse(uid, programId, { resetPaidWithoutTx, memberId });
     const basePath = `users/${uid}/programs/${programId}`;
     const now = new Date().toISOString();
 
@@ -211,7 +246,21 @@ export async function POST(request) {
       await batch.commit();
     }
 
-    return NextResponse.json({ success: true, fixed: fixes.length, summary });
+    // Duplicate (bina paise wali) entries ko chhupao — delete nahi, delete_flag
+    for (let i = 0; i < duplicates.length; i += 450) {
+      const batch = adminDb.batch();
+      for (const d of duplicates.slice(i, i + 450)) {
+        batch.update(adminDb.doc(`${basePath}/payment_pending/${d.entryId}`), {
+          delete_flag: true,
+          duplicateOf: d.keepId,
+          reconciledAt: now,
+          updatedAt: now,
+        });
+      }
+      await batch.commit();
+    }
+
+    return NextResponse.json({ success: true, fixed: fixes.length, duplicatesHidden: duplicates.length, summary });
   } catch (err) {
     console.error('[payments/reconcile POST]', err);
     return NextResponse.json({ error: 'Server error', details: err.message }, { status: 500 });

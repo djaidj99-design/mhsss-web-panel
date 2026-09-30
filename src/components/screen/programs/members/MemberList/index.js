@@ -844,6 +844,7 @@ const MemberList = () => {
                 memberData={selectedMember}
                 paymentReport={paymentReport}
                 loading={loadingReport}
+                onRefresh={() => selectedMember && handleShowPaymentDetails(selectedMember)}
             />
         </div>
     );

@@ -26,6 +26,7 @@ import {
   RocketOutlined
 } from '@ant-design/icons';
 import { createSearchIndex } from '@/lib/commonFun';
+import { entryRemaining } from '@/lib/paymentMath';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -54,6 +55,8 @@ const AddPaymentModal = ({ onSuccess } = {}) => {
     const [isReferenceValid, setIsReferenceValid] = useState(true);
     const [marriageSearchText, setMarriageSearchText] = useState('');
     const [showPendingOnly, setShowPendingOnly] = useState(false);
+    // User ne "Per Marriage" raashi khud badli ya nahi
+    const [amountTouched, setAmountTouched] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const [paymentSummary, setPaymentSummary] = useState(null);
     const [quickAmounts] = useState([100, 200, 500, 1000, 2000, 5000]);
@@ -277,8 +280,27 @@ const AddPaymentModal = ({ onSuccess } = {}) => {
     // Payment ab server API (/api/payments/process) se hota hai — wahi ek jagah
     // jo pending entry, paidAmount aur transaction ko ek saath sahi likhti hai.
     const processPayment = async (marriageIds, values) => {
-        const amount = Number(values.amount);
-
+        // "Per Marriage" field = EK closing ki raashi (kul nahi).
+        // Pehle ise kul raashi maan liya gaya tha, isliye 3 closing chunne par
+        // sirf pehli paid hoti thi aur baaki pending reh jati thi.
+        const perMarriage = Number(values.amount) || 0;
+        const selectedDue = marriageIds.reduce((s, id) => {
+            const e = paymentPendingEntries.find(p => (p.closingMemberId || p.marriageId) === id && p.memberId === selectedMember);
+            return s + (e ? entryRemaining(e, perMarriage) : 0);
+        }, 0);
+        // Har closing ka bakaya
+        const dues = marriageIds.map(id => {
+            const e = paymentPendingEntries.find(p => (p.closingMemberId || p.marriageId) === id && p.memberId === selectedMember);
+            return e ? entryRemaining(e, perMarriage) : 0;
+        });
+        // Per Marriage raashi kisi closing ke bakaye se kam hai => har closing me utna hi (partial)
+        // Sirf tab partial jab user ne khud kam raashi likhi ho. Default (member ki
+        // kist) chhedi nahi to har closing ka POORA bakaya liya jata hai — closing
+        // ki raashi member ki aaj ki kist se alag ho sakti hai (jaise 300 vs 200).
+        const perClosingPay = amountTouched && perMarriage > 0 && dues.some(d => d > perMarriage) ? perMarriage : null;
+        const amount = perClosingPay
+            ? dues.reduce((s, d) => s + Math.min(d, perClosingPay), 0)
+            : selectedDue;
         setLoading(true);
         try {
             const token = await auth.currentUser?.getIdToken();
@@ -297,7 +319,8 @@ const AddPaymentModal = ({ onSuccess } = {}) => {
                     paymentDate: dayjs(values.paymentDate).toISOString(),
                     note: values.note || '',
                     onlineReference: values.onlineReference || '',
-                    customTotalAmount: amount > 0 ? amount : null,
+                    customTotalAmount: null,
+                    perClosingPay,
                 }),
             });
             const result = await res.json();
@@ -322,7 +345,7 @@ const AddPaymentModal = ({ onSuccess } = {}) => {
                 content: (
                     <div>
                         <div className="font-medium">Payment Successful!</div>
-                        <div className="text-xs">Processed {transactions.length} payment(s) of ₹{amount}</div>
+                        <div className="text-xs">Processed {transactions.length} payment(s) of ₹{result.totalPaid ?? amount}</div>
                     </div>
                 ),
                 duration: 3,
@@ -434,6 +457,7 @@ const AddPaymentModal = ({ onSuccess } = {}) => {
         
         const member = members.find(m => m.id === memberId);
         form.setFieldsValue({ amount: member?.payAmount || 200 });
+        setAmountTouched(false);
         
         const { pendingEntries, alreadyPaidIds } = await fetchMemberPaymentInfo(memberId);
         
@@ -445,6 +469,7 @@ const AddPaymentModal = ({ onSuccess } = {}) => {
     };
 
     const handleAmountChange = (value) => {
+        setAmountTouched(true);
         const amount = Number(value) || 0;
         const count = selectedMarriages.length || 1;
         setTotalAmount(amount * count);

@@ -28,6 +28,7 @@ import { PDFDownloadLink, PDFViewer, pdf } from '@react-pdf/renderer';
 import { message } from 'antd';
 import { useAuth } from '@/lib/AuthProvider';
 import PaidHistoryPdf from '@/components/pdfcom/PaidHistoryPdf';
+import ReconcileModal from '@/components/common/payments/ReconcileModal';
 import { fetchPaidHistory } from '@/lib/paidHistory';
 import SingleMemberPendingPaymentPdf from './PendingPaymentPdf';
 import { useSelector } from 'react-redux';
@@ -35,12 +36,13 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
-function MemberPaymentDetails({ visible, onClose, memberData, paymentReport, loading = false }) {
+function MemberPaymentDetails({ visible, onClose, memberData, paymentReport, loading = false, onRefresh }) {
     const [activeTab, setActiveTab] = useState('1');
     console.log(paymentReport,'paymentReport')
     const selectedProgram = useSelector((state) => state.data.selectedProgram);
     const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
     const [paidPdfLoading, setPaidPdfLoading] = useState(false);
+    const [reconcileOpen, setReconcileOpen] = useState(false);
     const { user } = useAuth();
 
     // भुगतान रसीद (तिथिवार) — बकाया शून्य होने पर भी
@@ -94,6 +96,8 @@ const handleDownloadPDF = () => {
                 return { color: 'success', icon: <CheckCircleOutlined />, text: 'Paid' };
             case 'pending':
                 return { color: 'warning', icon: <ClockCircleOutlined />, text: 'Pending' };
+            case 'partial':
+                return { color: 'processing', icon: <ClockCircleOutlined />, text: 'Partial' };
             default:
                 return { color: 'default', icon: null, text: status };
         }
@@ -147,6 +151,7 @@ const handleDownloadPDF = () => {
             filters: [
                 { text: 'Paid', value: 'paid' },
                 { text: 'Pending', value: 'pending' },
+                { text: 'Partial', value: 'partial' },
             ],
             onFilter: (value, record) => record.status === value,
         },
@@ -175,6 +180,12 @@ const handleDownloadPDF = () => {
             loading={loading}
             extra={
                 <div className='flex items-center gap-2'>
+                <Button
+                    onClick={() => setReconcileOpen(true)}
+                    style={{ borderColor: '#2563eb', color: '#2563eb' }}
+                >
+                    भुगतान मिलान
+                </Button>
                 <Button
                     loading={paidPdfLoading}
                     onClick={handlePaidReceipt}
@@ -321,6 +332,16 @@ const handleDownloadPDF = () => {
         />
                 </PDFViewer>
             </Drawer>
+        {reconcileOpen && (
+                <ReconcileModal
+                    open={reconcileOpen}
+                    onClose={() => setReconcileOpen(false)}
+                    programId={selectedProgram?.id}
+                    memberId={member?.id || member?.memberId}
+                    memberName={member?.displayName}
+                    onFixed={() => onRefresh?.()}
+                />
+            )}
         </Drawer>
     );
 }

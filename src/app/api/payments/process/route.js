@@ -230,6 +230,7 @@ async function processSinglePayment(uid, body) {
     payerId, selectedClosingIds,
     paymentMethod, paymentDate, note,
     onlineReference, perClosingAmount, customTotalAmount,
+    perClosingPay, // optional: har closing me itna hi (kam ho to partial)
   } = body;
 
   if (!programId || !payerId || !selectedClosingIds?.length) {
@@ -286,7 +287,11 @@ async function processSinglePayment(uid, body) {
 
     const totalDue    = targets.reduce((s, x) => s + x.remain, 0);
     const custom      = Number(customTotalAmount) || 0;
-    const totalAmount = custom > 0 ? custom : totalDue;
+    const perPay      = Number(perClosingPay) || 0;
+    // perClosingPay: har closing me min(perPay, bakaya) — waterfall nahi
+    const totalAmount = perPay > 0
+      ? targets.reduce((s, x) => s + Math.min(perPay, x.remain), 0)
+      : (custom > 0 ? custom : totalDue);
 
     if (totalAmount > totalDue) {
       throw new HttpError(400,
@@ -303,7 +308,7 @@ async function processSinglePayment(uid, body) {
     for (const x of targets) {
       if (remaining <= 0) break;
       seq++;
-      const pay   = Math.min(remaining, x.remain);
+      const pay   = perPay > 0 ? Math.min(perPay, x.remain, remaining) : Math.min(remaining, x.remain);
       const txRef = adminDb.collection(`${basePath}/transactions`).doc();
       const upd   = buildEntryUpdate({
         entry: x.entry, due: x.due, prevPaid: x.prevPaid, pay,

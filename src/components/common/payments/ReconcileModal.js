@@ -33,7 +33,7 @@ const personCol = (title, nameKey, regKey) => ({
 /**
  * भुगतान मिलान — transactions (असली जमा) बनाम pending entries (paid/pending status)
  */
-export default function ReconcileModal({ open, onClose, programId, programName, onFixed }) {
+export default function ReconcileModal({ open, onClose, programId, programName, onFixed, memberId = null, memberName = '' }) {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -44,7 +44,7 @@ export default function ReconcileModal({ open, onClose, programId, programName, 
     if (!programId) return;
     setLoading(true);
     try {
-      setData(await callApi(`/api/payments/reconcile?programId=${programId}`));
+      setData(await callApi(`/api/payments/reconcile?programId=${programId}${memberId ? `&memberId=${memberId}` : ''}`));
     } catch (e) {
       message.error('मिलान रिपोर्ट लोड नहीं हुई: ' + e.message);
     } finally {
@@ -55,7 +55,7 @@ export default function ReconcileModal({ open, onClose, programId, programName, 
   useEffect(() => { if (open) load(); /* eslint-disable-next-line */ }, [open, programId]);
 
   const s = data?.summary;
-  const fixCount = (s?.fixCount || 0) + (resetPaidWithoutTx ? s?.paidWithoutTxCount || 0 : 0);
+  const fixCount = (s?.fixCount || 0) + (s?.duplicateCount || 0) + (resetPaidWithoutTx ? s?.paidWithoutTxCount || 0 : 0);
 
   const apply = () => {
     modal.confirm({
@@ -68,9 +68,9 @@ export default function ReconcileModal({ open, onClose, programId, programName, 
         try {
           const r = await callApi('/api/payments/reconcile', {
             method: 'POST',
-            body: JSON.stringify({ programId, resetPaidWithoutTx }),
+            body: JSON.stringify({ programId, resetPaidWithoutTx, memberId }),
           });
-          message.success(`${r.fixed} एंट्री ठीक की गईं`);
+          message.success(`${r.fixed} एंट्री ठीक की गईं${r.duplicatesHidden ? `, ${r.duplicatesHidden} डुप्लीकेट एंट्री हटाई गईं` : ''}`);
           onFixed?.();
           await load();
         } catch (e) {
@@ -131,7 +131,7 @@ export default function ReconcileModal({ open, onClose, programId, programName, 
       open={open}
       onCancel={onClose}
       width={960}
-      title={`भुगतान मिलान (Reconcile) ${programName ? '— ' + programName : ''}`}
+      title={`भुगतान मिलान (Reconcile) ${memberName ? '— ' + memberName : programName ? '— ' + programName : ''}`}
       destroyOnHidden
       footer={[
         <Button key="r" onClick={load} disabled={loading || applying}>दोबारा जाँचें</Button>,
@@ -155,7 +155,7 @@ export default function ReconcileModal({ open, onClose, programId, programName, 
               <Col xs={12} md={6}>{stat('बिना एंट्री वाले TRX', `${s.orphanTxCount} · ${fmt(s.orphanTxAmount)}`, '#dc2626')}</Col>
             </Row>
 
-            {s.fixCount === 0 && s.orphanTxCount === 0 && s.paidWithoutTxCount === 0 && (
+            {s.fixCount === 0 && s.orphanTxCount === 0 && s.paidWithoutTxCount === 0 && !s.duplicateCount && (
               <Alert type="success" showIcon className="mb-3" message="सब कुछ मिलान में है — कोई सुधार ज़रूरी नहीं।" />
             )}
 
@@ -186,6 +186,22 @@ export default function ReconcileModal({ open, onClose, programId, programName, 
                       <Alert type="warning" showIcon className="mb-2"
                         message="एक ही क्लोजिंग के लिए देय से ज़्यादा पैसा दर्ज है — अक्सर duplicate transaction। Transactions पेज से अतिरिक्त entry हटाएँ।" />
                       {table(overCols, data.overpaid, 'entryId')}
+                    </>
+                  ),
+                },
+                {
+                  key: 'dup',
+                  label: <span>डुप्लीकेट एंट्री <Tag color="purple">{s.duplicateCount || 0}</Tag></span>,
+                  children: (
+                    <>
+                      <Alert type="info" showIcon className="mb-2"
+                        message="एक ही सदस्य + एक ही क्लोजिंग की दो एंट्री — एक पेड हो जाती है और दूसरी पेंडिंग दिखती रहती है। सुधार पर बिना पैसे वाली डुप्लीकेट छुपा दी जाएगी (delete नहीं)।" />
+                      {table([
+                        personCol('भुगतानकर्ता', 'payerName', 'payerRegNo'),
+                        personCol('क्लोजिंग', 'closingName', 'closingRegNo'),
+                        { title: 'डुप्लीकेट', width: 90, render: (_, r) => <StatusTag s={r.status} /> },
+                        { title: 'रखी जाएगी', width: 90, render: (_, r) => <StatusTag s={r.keepStatus} /> },
+                      ], data.duplicates, 'entryId')}
                     </>
                   ),
                 },
